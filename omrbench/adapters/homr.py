@@ -19,7 +19,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from omrbench.adapters.base import Adapter, move_into, run_subprocess
+from omrbench.adapters.base import Adapter, capture_subprocess, move_into, run_subprocess
 from omrbench.corpus import Sample
 
 
@@ -30,6 +30,13 @@ class HomrAdapter(Adapter):
         self.cmd = shlex.split(os.environ.get("OMRBENCH_HOMR_CMD", "homr"))
         cwd = os.environ.get("OMRBENCH_HOMR_CWD")
         self.cwd = Path(cwd) if cwd else None
+
+    def version(self) -> str | None:
+        # homr exposes no --version flag; for a local checkout the git
+        # description is the precise identifier. None for a PATH/uvx install.
+        if self.cwd is None:
+            return None
+        return capture_subprocess(["git", "describe", "--tags", "--always"], cwd=self.cwd)
 
     def predict(self, sample: Sample, out_path: Path) -> bool:
         image = sample.image

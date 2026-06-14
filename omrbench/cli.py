@@ -8,7 +8,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -33,6 +35,19 @@ def _cmd_run(args: argparse.Namespace) -> int:
     out_dir = Path(args.out) if args.out else Path("predictions") / args.adapter
     results = adapter.run_corpus(samples, out_dir)
     ok = sum(1 for v in results.values() if v)
+    # Capture the engine version now, while the engine is present, so `score`
+    # (which imports no engine) can read it back from disk later.
+    (out_dir / "run.json").write_text(
+        json.dumps(
+            {
+                "engine": adapter.name,
+                "engine_version": adapter.version(),
+                "corpus": str(args.corpus),
+                "date": datetime.now(timezone.utc).isoformat(),
+            },
+            indent=2,
+        )
+    )
     print(f"{adapter.name}: {ok}/{len(results)} samples produced -> {out_dir}")
     return 0
 
@@ -57,7 +72,33 @@ def _cmd_score(args: argparse.Namespace) -> int:
         prediction = pred_dir / f"{sample.id}.musicxml"
         report.samples.append(metric.score(prediction, reference, sample.id))
     print(report.render())
+
+    engine, engine_version = _read_run_meta(pred_dir)
+    date = datetime.now(timezone.utc)
+    record = report.to_record(engine, engine_version, _tier_of(args.corpus), date.isoformat())
+    results_dir = Path("results") / engine
+    results_dir.mkdir(parents=True, exist_ok=True)
+    out = results_dir / f"{date.strftime('%Y%m%dT%H%M%SZ')}.json"
+    out.write_text(json.dumps(record, indent=2))
+    print(f"\nwrote result record -> {out}")
     return 0
+
+
+def _read_run_meta(pred_dir: Path) -> tuple[str, str | None]:
+    """Engine name + version from the predictions' run.json, falling back to the
+    prediction dir name when predictions were produced outside `omrbench run`."""
+    meta_path = pred_dir / "run.json"
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text())
+        return meta.get("engine", pred_dir.name), meta.get("engine_version")
+    return pred_dir.name, None
+
+
+def _tier_of(corpus: str) -> str | None:
+    for part in Path(corpus).parts:
+        if part.startswith("tier"):
+            return part
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:

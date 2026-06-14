@@ -29,6 +29,11 @@ class Adapter(ABC):
         not abort a whole run.
         """
 
+    def version(self) -> str | None:
+        """Best-effort engine version string for run metadata, or None if
+        unknown. Must not import the engine — shell out, like ``predict``."""
+        return None
+
     def run_corpus(self, samples: list[Sample], out_dir: Path) -> dict[str, bool]:
         out_dir.mkdir(parents=True, exist_ok=True)
         results: dict[str, bool] = {}
@@ -45,6 +50,18 @@ def run_subprocess(cmd: list[str], cwd: Path | None = None) -> bool:
     """Run ``cmd``, returning True on exit code 0. Stdout/stderr pass through."""
     proc = subprocess.run(cmd, cwd=cwd)  # noqa: S603 - cmd is caller-controlled
     return proc.returncode == 0
+
+
+def capture_subprocess(cmd: list[str], cwd: Path | None = None) -> str | None:
+    """Run ``cmd`` and return its trimmed stdout, or None on failure. Used for
+    cheap metadata probes (e.g. a version string); never raises."""
+    try:
+        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)  # noqa: S603
+    except OSError:
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
 
 
 def move_into(src: Path, dest: Path) -> None:

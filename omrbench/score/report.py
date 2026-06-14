@@ -3,9 +3,13 @@ pooled reference length) is the headline number; macro is the per-sample mean.""
 
 from __future__ import annotations
 
+import statistics
 from dataclasses import dataclass, field
 
 from omrbench.score.music21_metric import SampleScore
+
+#: bump when the persisted result-record shape changes incompatibly
+RECORD_SCHEMA_VERSION = 1
 
 
 @dataclass
@@ -31,6 +35,50 @@ class Report:
         if not scored:
             return 0.0
         return sum(s.ser for s in scored) / len(scored)
+
+    @property
+    def median_ser(self) -> float:
+        scored = self.scored
+        if not scored:
+            return 0.0
+        return statistics.median(s.ser for s in scored)
+
+    def to_record(
+        self,
+        engine: str,
+        engine_version: str | None,
+        tier: str | None,
+        date: str,
+    ) -> dict:
+        """A self-describing result record: metadata + aggregates + every
+        per-sample score, so history/comparison/worst-N are views over JSON
+        with no re-run. Imports no engine."""
+        return {
+            "schema_version": RECORD_SCHEMA_VERSION,
+            "engine": engine,
+            "engine_version": engine_version,
+            "metric": self.metric,
+            "corpus": self.corpus,
+            "tier": tier,
+            "date": date,
+            "summary": {
+                "samples_total": len(self.samples),
+                "samples_scored": len(self.scored),
+                "micro_ser": round(self.micro_ser, 6),
+                "macro_ser": round(self.macro_ser, 6),
+                "median_ser": round(self.median_ser, 6),
+            },
+            "samples": [
+                {
+                    "id": s.sample_id,
+                    "distance": s.distance,
+                    "reference_length": s.reference_length,
+                    "ser": round(s.ser, 6),
+                    "ok": s.ok,
+                }
+                for s in self.samples
+            ],
+        }
 
     def render(self) -> str:
         lines = [
