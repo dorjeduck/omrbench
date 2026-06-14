@@ -15,10 +15,11 @@ the corpus + scorer with zero OMR tools present, and add one engine at a time.
 
 ## Why
 
-Existing OMR benchmarks couple everything together: a gated dataset, every
-engine installed at once, and a fragile cross-format conversion in the scoring
-path. One broken piece blocks the whole thing. omrbench decouples the three
-parts so each runs alone:
+omrbench keeps the three moving parts — the dataset, the engines, and the
+scorer — independent, so each can run without the others. You can install the
+corpus and scorer with no OMR tool present, add engines one at a time behind
+subprocess adapters, and keep the scoring path free of any engine-specific or
+cross-format conversion. Each piece fails (or passes) on its own:
 
 ```
 corpus/   images + reference MusicXML (+ optional **kern)   — the asset
