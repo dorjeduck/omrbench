@@ -11,7 +11,7 @@ engines plug in through thin subprocess adapters — so you can install and run
 the corpus + scorer with zero OMR tools present, and add one engine at a time.
 
 > Status: early skeleton. The homr adapter and the music21 metric run
-> end-to-end; the corpus is seeded and grown over time.
+> end-to-end; the corpus is seeded and expanded over time.
 
 ## Why
 
@@ -19,25 +19,26 @@ omrbench keeps its three components — the dataset, the engines, and the
 scorer — independent, so each can run without the others. You can install the
 corpus and scorer with no OMR tool present, add engines one at a time behind
 subprocess adapters, and keep the scoring path free of any engine-specific or
-cross-format conversion. Each piece fails (or passes) on its own:
+cross-format conversion. Each component can be run and tested independently:
 
 ```
-corpus/   images + reference MusicXML (+ optional **kern)   — the asset
+corpus/   images + reference MusicXML (+ optional **kern)
 adapters/ "images -> MusicXML" subprocess wrappers, 1 per engine
-score/    MusicXML-vs-MusicXML, imports no engine            — the neutral judge
+score/    MusicXML-vs-MusicXML, imports no engine
 ```
 
 ## Corpus tiers (reported separately, never mixed)
 
 - **Tier 1 — synthetic**: rendered from known-good public-domain MusicXML.
-  Ground truth is exact and free; degradations can be layered on. Scales cheaply
-  but is optimistic vs real-world scans.
+  Ground truth is exact and free, and degradations can be added. Cheap to scale
+  but optimistic vs real-world scans.
 - **Tier 2 — real scans**: hand-verified transcriptions of real documents.
-  Predictive of actual quality, small and precious. Seeded from
+  Predictive of actual quality, but limited in size. Seeded from
   [`btrkeks/polish-scores`](https://huggingface.co/datasets/btrkeks/polish-scores)
   (112 historical scans, dual MusicXML/**kern ground truth, **evaluation-only**).
 
-Mixing the two hides the optimism in synthetic numbers, so reports keep them apart.
+Mixing the two would mask the optimism in the synthetic numbers, so reports keep
+them separate.
 
 ## Install
 
@@ -69,7 +70,7 @@ file to force a re-run.
   distance / reference length (0.0 = perfect).
 - **`omr-ned`** (optional, *not yet implemented*): the OMR-literature metric on
   Humdrum `**kern`. The reference ships `**kern`, so only the engine output
-  needs conversion — the one fragile step, kept behind an opt-in flag.
+  needs conversion — the fragile step, kept behind an opt-in flag.
 
 > **On the metric.** SER here is a normalized Levenshtein edit distance over a
 > reference symbol sequence — the same construction as Word/Character Error Rate
