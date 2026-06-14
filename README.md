@@ -15,7 +15,7 @@ the corpus + scorer with zero OMR tools present, and add one engine at a time.
 
 ## Why
 
-omrbench keeps the three moving parts — the dataset, the engines, and the
+omrbench keeps its three components — the dataset, the engines, and the
 scorer — independent, so each can run without the others. You can install the
 corpus and scorer with no OMR tool present, add engines one at a time behind
 subprocess adapters, and keep the scoring path free of any engine-specific or
