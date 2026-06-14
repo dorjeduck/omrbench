@@ -71,6 +71,13 @@ file to force a re-run.
   Humdrum `**kern`. The reference ships `**kern`, so only the engine output
   needs conversion — the one fragile step, kept behind an opt-in flag.
 
+> **On the metric.** SER here is a normalized Levenshtein edit distance over a
+> reference symbol sequence — the same construction as Word/Character Error Rate
+> in speech recognition and OCR. The construction is standard; the name "Symbol
+> Error Rate" and the specific implementation (music21 token stream,
+> MusicXML-vs-MusicXML) are this project's own. `omr-ned` is intended to follow
+> the separate OMR-NED metric.
+
 ## Adding an engine
 
 Implement `Adapter.predict(sample, out_path) -> bool` in
