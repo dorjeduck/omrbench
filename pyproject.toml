@@ -1,0 +1,27 @@
+[project]
+name = "omrbench"
+version = "0.0.1"
+description = "Tool-independent ground-truth benchmark for Optical Music Recognition (OMR)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Martin Dudek" }]
+dependencies = [
+    "music21>=9.1",
+    "editdistance>=0.8",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Only needed to download the polish-scores Tier-2 corpus.
+fetch = ["datasets>=2.18", "huggingface_hub>=0.23", "pillow>=10.0"]
+
+[project.scripts]
+omrbench = "omrbench.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["omrbench*"]
