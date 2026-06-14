@@ -1,5 +1,8 @@
 # omrbench
 
+> ⚠️ **Early alpha.** APIs, corpus layout, and metrics may change without
+> notice. Not yet ready for production use — expect rough edges.
+
 A **tool-independent ground-truth benchmark for Optical Music Recognition (OMR)**.
 
 Point it at any engine that emits MusicXML, get a comparable score against a
