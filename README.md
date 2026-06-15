@@ -61,8 +61,9 @@ omrbench run --adapter homr --corpus corpus/tier2_real/polish_scores
 omrbench score --pred predictions/homr --corpus corpus/tier2_real/polish_scores
 ```
 
-`grandstaff` is a large engraved (synthetic) dataset; `--limit`/`--seed` select
-a reproducible subset. Note it is the training data of some engines (e.g. homr),
+`grandstaff` is an engraved (synthetic) dataset of tens of thousands of
+kern/image pairs (large download, cached); `--limit`/`--seed` select a
+reproducible subset. Note it is the training data of some engines (e.g. homr),
 so scores there are in-distribution and optimistic — choosing a source suited to
 the engine under test is the user's call.
 

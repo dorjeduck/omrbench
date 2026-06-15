@@ -15,9 +15,10 @@ data of some engines (e.g. homr). Benchmarking such an engine against it
 measures in-distribution performance — optimistic and not predictive. Choosing
 an appropriate source for a given engine is the user's call.
 
-The full archive holds ~50k samples; this fetcher writes a reproducible subset
-(``--limit``, default 200; ``--seed`` for the sampling). The archive is large
-(~several GB) and is cached so re-fetching does not re-download.
+The full archive holds tens of thousands of kern/image pairs; this fetcher
+writes a reproducible subset (``--limit``, default 200; ``--seed`` for the
+sampling). The download is large and is cached so re-fetching does not
+re-download (the actual size is printed once downloaded).
 
 Source: https://grfia.dlsi.ua.es/musicdocs/grandstaff.tgz
 """
@@ -94,8 +95,9 @@ def _ensure_archive() -> Path:
     cache_root.mkdir(parents=True, exist_ok=True)
     archive = cache_root / "grandstaff.tgz"
     if not archive.exists():
-        print(f"downloading {_URL} (large, ~several GB) ...")
+        print(f"downloading {_URL} ...")
         urllib.request.urlretrieve(_URL, archive)  # noqa: S310 - fixed, trusted URL
+        print(f"downloaded {archive.stat().st_size / 1e6:.0f} MB")
     print(f"extracting {archive.name} ...")
     with tarfile.open(archive) as tar:
         tar.extractall(cache_root, filter="data")
