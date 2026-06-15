@@ -8,3 +8,4 @@ __pycache__/
 /predictions/
 /corpus/tier2_real/polish_scores/
 /corpus/tier1_synthetic/grandstaff/
+/datasets/

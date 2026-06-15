@@ -17,8 +17,13 @@ an appropriate source for a given engine is the user's call.
 
 The full archive holds tens of thousands of kern/image pairs; this fetcher
 writes a reproducible subset (``--limit``, default 200; ``--seed`` for the
-sampling). The download is large and is cached so re-fetching does not
-re-download (the actual size is printed once downloaded).
+sampling).
+
+The raw dataset is read from ``source_dir`` (default ``datasets/grandstaff`` in
+the working dir — a visible location, not a hidden cache). If that directory
+already holds the extracted dataset (e.g. another project's copy, passed via
+``--source-dir``), it is reused and nothing is downloaded. Otherwise the tarball
+is downloaded there, extracted, and then removed so only one copy remains.
 
 Source: https://grfia.dlsi.ua.es/musicdocs/grandstaff.tgz
 """
@@ -40,16 +45,16 @@ _LICENSE_NOTE = (
 )
 
 
-def fetch(dest: Path, limit: int = 200, seed: int = 0) -> int:
+def fetch(dest: Path, limit: int = 200, seed: int = 0, source_dir: Path | None = None) -> int:
     from music21 import converter  # core dep; parses **kern, writes MusicXML
 
-    cache = _ensure_archive()
+    source = _ensure_source(source_dir or Path("datasets/grandstaff"))
     krn_files = sorted(
-        p for p in cache.rglob("*.krn")
+        p for p in source.rglob("*.krn")
         if not p.name.startswith("._") and p.with_suffix(".jpg").exists()
     )
     if not krn_files:
-        raise RuntimeError(f"no .krn/.jpg pairs found under {cache}")
+        raise RuntimeError(f"no .krn/.jpg pairs found under {source}")
 
     random.Random(seed).shuffle(krn_files)
     print(f"found {len(krn_files)} kern/image pairs; sampling up to {limit} (seed={seed})")
@@ -77,7 +82,7 @@ def fetch(dest: Path, limit: int = 200, seed: int = 0) -> int:
                     "tier": "tier1_synthetic",
                     "source": "grandstaff",
                     "type": "engraved",
-                    "origin": str(krn.relative_to(cache)),
+                    "origin": str(krn.relative_to(source)),
                     "license": _LICENSE_NOTE,
                 }
             )
@@ -86,19 +91,35 @@ def fetch(dest: Path, limit: int = 200, seed: int = 0) -> int:
     return count
 
 
-def _ensure_archive() -> Path:
-    """Download + extract the GrandStaff tarball into a cache dir, once."""
-    cache_root = Path.home() / ".cache" / "omrbench" / "grandstaff"
-    if any(cache_root.rglob("*.krn")) if cache_root.exists() else False:
-        return cache_root
+def _ensure_source(source_dir: Path) -> Path:
+    """Return a directory holding the extracted GrandStaff `.krn`/`.jpg` tree.
 
-    cache_root.mkdir(parents=True, exist_ok=True)
-    archive = cache_root / "grandstaff.tgz"
-    if not archive.exists():
-        print(f"downloading {_URL} ...")
+    Handles three states of ``source_dir``, in order:
+
+    1. already holds the extracted dataset -> use it, nothing else to do;
+    2. holds only ``grandstaff.tgz`` (e.g. the user dropped the tarball there)
+       -> extract it, no download;
+    3. neither -> download the tarball, then extract.
+
+    After extraction the tarball is removed so only the extracted tree remains
+    (no redundant second copy). The location is visible and printed.
+    """
+    archive = source_dir / "grandstaff.tgz"
+
+    if source_dir.exists() and any(source_dir.rglob("*.krn")):
+        print(f"using existing GrandStaff dataset: {source_dir.resolve()}")
+        return source_dir
+
+    source_dir.mkdir(parents=True, exist_ok=True)
+    if archive.exists():
+        print(f"using existing tarball: {archive.resolve()}")
+    else:
+        print(f"downloading {_URL}\n  -> {archive.resolve()}")
         urllib.request.urlretrieve(_URL, archive)  # noqa: S310 - fixed, trusted URL
         print(f"downloaded {archive.stat().st_size / 1e6:.0f} MB")
-    print(f"extracting {archive.name} ...")
+
+    print(f"extracting {archive.name} -> {source_dir.resolve()}")
     with tarfile.open(archive) as tar:
-        tar.extractall(cache_root, filter="data")
-    return cache_root
+        tar.extractall(source_dir, filter="data")
+    archive.unlink()  # keep only the extracted tree, not a second copy
+    return source_dir

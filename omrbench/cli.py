@@ -26,7 +26,8 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
         from omrbench.fetch.grandstaff import fetch
 
         dest = Path(args.dest) if args.dest else Path("corpus/tier1_synthetic/grandstaff")
-        n = fetch(dest, limit=args.limit, seed=args.seed)
+        source_dir = Path(args.source_dir) if args.source_dir else None
+        n = fetch(dest, limit=args.limit, seed=args.seed, source_dir=source_dir)
         print(f"wrote {n} samples to {dest}")
         return 0
     print(f"unknown dataset: {args.dataset}", file=sys.stderr)
@@ -117,6 +118,11 @@ def main(argv: list[str] | None = None) -> int:
     p_fetch.add_argument("--dest", help="destination corpus dir")
     p_fetch.add_argument("--limit", type=int, default=200, help="max samples (grandstaff)")
     p_fetch.add_argument("--seed", type=int, default=0, help="sampling seed (grandstaff)")
+    p_fetch.add_argument(
+        "--source-dir",
+        help="grandstaff: existing extracted dataset dir to reuse "
+        "(default datasets/grandstaff, downloaded if absent)",
+    )
     p_fetch.set_defaults(func=_cmd_fetch)
 
     p_run = sub.add_parser("run", help="run an OMR engine over a corpus")
