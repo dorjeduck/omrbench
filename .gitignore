@@ -7,3 +7,4 @@ __pycache__/
 # Generated engine outputs and downloaded corpora are not checked in.
 /predictions/
 /corpus/tier2_real/polish_scores/
+/corpus/tier1_synthetic/grandstaff/

@@ -22,6 +22,13 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
         n = fetch(dest)
         print(f"wrote {n} samples to {dest}")
         return 0
+    if args.dataset == "grandstaff":
+        from omrbench.fetch.grandstaff import fetch
+
+        dest = Path(args.dest) if args.dest else Path("corpus/tier1_synthetic/grandstaff")
+        n = fetch(dest, limit=args.limit, seed=args.seed)
+        print(f"wrote {n} samples to {dest}")
+        return 0
     print(f"unknown dataset: {args.dataset}", file=sys.stderr)
     return 2
 
@@ -106,8 +113,10 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_fetch = sub.add_parser("fetch", help="download a ground-truth corpus")
-    p_fetch.add_argument("dataset", choices=["polish-scores"])
+    p_fetch.add_argument("dataset", choices=["polish-scores", "grandstaff"])
     p_fetch.add_argument("--dest", help="destination corpus dir")
+    p_fetch.add_argument("--limit", type=int, default=200, help="max samples (grandstaff)")
+    p_fetch.add_argument("--seed", type=int, default=0, help="sampling seed (grandstaff)")
     p_fetch.set_defaults(func=_cmd_fetch)
 
     p_run = sub.add_parser("run", help="run an OMR engine over a corpus")

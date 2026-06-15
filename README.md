@@ -50,8 +50,9 @@ pip install -e '.[fetch]'   # + dataset download (datasets, huggingface_hub)
 ## Use
 
 ```bash
-# 1. get a Tier-2 corpus
-omrbench fetch polish-scores            # -> corpus/tier2_real/polish_scores/
+# 1. get a corpus
+omrbench fetch polish-scores               # Tier 2 -> corpus/tier2_real/polish_scores/
+omrbench fetch grandstaff --limit 200      # Tier 1 -> corpus/tier1_synthetic/grandstaff/
 
 # 2. run an engine (homr must be installed; see adapter docstring for config)
 omrbench run --adapter homr --corpus corpus/tier2_real/polish_scores
@@ -59,6 +60,11 @@ omrbench run --adapter homr --corpus corpus/tier2_real/polish_scores
 # 3. score the predictions against the ground truth
 omrbench score --pred predictions/homr --corpus corpus/tier2_real/polish_scores
 ```
+
+`grandstaff` is a large engraved (synthetic) dataset; `--limit`/`--seed` select
+a reproducible subset. Note it is the training data of some engines (e.g. homr),
+so scores there are in-distribution and optimistic — choosing a source suited to
+the engine under test is the user's call.
 
 `run` caches: a sample with a non-empty output is not re-run. Delete the output
 file to force a re-run.
