@@ -3,7 +3,7 @@ name = "omrbench"
 version = "0.0.1"
 description = "Tool-independent ground-truth benchmark for Optical Music Recognition (OMR)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Martin Dudek" }]
 dependencies = [

@@ -8,6 +8,7 @@ stays installable with no OMR engine present.
 
 from __future__ import annotations
 
+import shlex
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
@@ -17,8 +18,14 @@ from omrbench.corpus import Sample
 
 
 class Adapter(ABC):
-    #: short, stable identifier used on the CLI and in report paths
+    #: engine-instance name (the ``--engine`` value); drives prediction/result
+    #: paths. Set from the ``omrbench.toml`` entry, not hard-coded.
     name: str
+
+    def __init__(self, name: str, cmd: str | list[str], cwd: str | Path | None = None) -> None:
+        self.name = name
+        self.cmd = shlex.split(cmd) if isinstance(cmd, str) else list(cmd)
+        self.cwd = Path(cwd) if cwd else None
 
     @abstractmethod
     def predict(self, sample: Sample, out_path: Path) -> bool:

@@ -1,0 +1,19 @@
+# omrbench engines. Copy to omrbench.toml and edit.
+#
+# Each [engines.<name>] entry binds an adapter (code in omrbench/adapters/) to a
+# concrete command. The entry name is what you pass to --engine, and it drives
+# the prediction/result paths (predictions/<name>/, results/<name>/).
+#
+#   adapter   required  which adapter drives this engine (e.g. "homr")
+#   cmd       required  the shell command to run the engine
+#   cwd       optional  working directory; required when cmd must run from a
+#                       specific dir (e.g. "poetry run" needs the project dir)
+
+[engines.homr]            # pip/uvx install on PATH
+adapter = "homr"
+cmd     = "homr"
+
+[engines.homr-0_6]        # a specific checkout, benchmarked alongside the above
+adapter = "homr"
+cmd     = "poetry run homr"
+cwd     = "/path/to/homr-v0.6"

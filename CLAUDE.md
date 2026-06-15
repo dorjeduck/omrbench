@@ -53,9 +53,13 @@ pip install -e .            # core
 pip install -e '.[fetch]'   # + dataset download (datasets, huggingface_hub)
 
 omrbench fetch polish-scores
-omrbench run   --adapter homr --corpus corpus/tier2_real/polish_scores
-omrbench score --pred predictions/homr --corpus corpus/tier2_real/polish_scores
+omrbench run   --engine homr --corpus corpus/tier2_real/polish_scores
+omrbench score --engine homr --corpus corpus/tier2_real/polish_scores
 ```
+
+`--engine` names an entry in `omrbench.toml` (see `omrbench.toml.example`);
+prediction/result paths derive from it (`predictions/<engine>/`,
+`results/<engine>/`). Multiple versions of one tool are just multiple entries.
 
 `run` caches: a non-empty output file is not re-run; delete it to force a re-run.
 
@@ -63,15 +67,18 @@ omrbench score --pred predictions/homr --corpus corpus/tier2_real/polish_scores
 
 homr lives in a *separate* repo at `/Users/dorjeduck/dev/2026/pdf_mxml/homr`
 (its own Poetry project; see that repo's CLAUDE.md for install/CoreML notes).
-The adapter reads its command from the environment so omrbench never imports or
-hard-codes homr:
+The command and working dir come from an `omrbench.toml` entry, so omrbench
+never imports or hard-codes homr:
 
-```bash
-export OMRBENCH_HOMR_CMD="poetry run homr"
-export OMRBENCH_HOMR_CWD="/Users/dorjeduck/dev/2026/pdf_mxml/homr"
+```toml
+[engines.homr]
+adapter = "homr"
+cmd     = "poetry run homr"
+cwd     = "/Users/dorjeduck/dev/2026/pdf_mxml/homr"
 ```
 
-Default `OMRBENCH_HOMR_CMD` is just `homr` (pip/uvx install on PATH).
+Then `omrbench run --engine homr ...`. A pip/uvx install on PATH is just
+`cmd = "homr"` with no `cwd`.
 
 ## Adding an engine
 

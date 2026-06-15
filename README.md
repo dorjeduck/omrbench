@@ -54,11 +54,38 @@ pip install -e '.[fetch]'   # + dataset download (datasets, huggingface_hub)
 omrbench fetch polish-scores               # Tier 2 -> corpus/tier2_real/polish_scores/
 omrbench fetch grandstaff --limit 200      # Tier 1 -> corpus/tier1_synthetic/grandstaff/
 
-# 2. run an engine (homr must be installed; see adapter docstring for config)
-omrbench run --adapter homr --corpus corpus/tier2_real/polish_scores
+# 2. run an engine declared in omrbench.toml (see "Engines" below)
+omrbench run --engine homr --corpus corpus/tier2_real/polish_scores
 
 # 3. score the predictions against the ground truth
-omrbench score --pred predictions/homr --corpus corpus/tier2_real/polish_scores
+omrbench score --engine homr --corpus corpus/tier2_real/polish_scores
+```
+
+Prediction and result paths are derived from the engine name
+(`predictions/<engine>/`, `results/<engine>/`) — nothing to set by hand.
+
+### Engines
+
+An engine is a named entry in `omrbench.toml` binding an adapter (the code that
+drives an OMR tool) to a command and optional working directory. Copy
+`omrbench.toml.example` to `omrbench.toml` and edit. This is the only place a
+tool's install/version/location lives — so benchmarking two homr versions is
+just two entries:
+
+```toml
+[engines.homr]                # pip/uvx install on PATH
+adapter = "homr"
+cmd     = "homr"
+
+[engines.homr-0_6]            # a specific checkout
+adapter = "homr"
+cmd     = "poetry run homr"
+cwd     = "/path/to/homr-v0.6"   # optional: required when cmd must run from a dir
+```
+
+```bash
+omrbench run   --engine homr-0_6 --corpus corpus/tier2_real/polish_scores
+omrbench score --engine homr-0_6 --corpus corpus/tier2_real/polish_scores
 ```
 
 `grandstaff` is an engraved (synthetic) dataset of tens of thousands of

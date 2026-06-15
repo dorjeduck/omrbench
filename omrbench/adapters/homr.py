@@ -3,18 +3,22 @@
 homr writes ``<name>.musicxml`` next to its input image. We run it on a copy of
 the input in a temp dir, then move the result to the expected output path.
 
-The homr command is configurable so this works whether homr is on PATH or run
-through Poetry/uvx:
+The command (``cmd``) and working directory (``cwd``) come from the engine's
+``omrbench.toml`` entry, so this works whether homr is on PATH or run through
+Poetry/uvx:
 
-    OMRBENCH_HOMR_CMD="homr"                         (default; pip/uvx install)
-    OMRBENCH_HOMR_CMD="poetry run homr"              (Poetry checkout)
-    OMRBENCH_HOMR_CWD="/path/to/homr"                (needed for `poetry run`)
+    [engines.homr]                # pip/uvx install on PATH
+    adapter = "homr"
+    cmd     = "homr"
+
+    [engines.homr-0_6]            # a specific checkout
+    adapter = "homr"
+    cmd     = "poetry run homr"
+    cwd     = "/path/to/homr-v0.6"   # required when cmd must run from a dir
 """
 
 from __future__ import annotations
 
-import os
-import shlex
 import shutil
 import tempfile
 from pathlib import Path
@@ -24,13 +28,6 @@ from omrbench.corpus import Sample
 
 
 class HomrAdapter(Adapter):
-    name = "homr"
-
-    def __init__(self) -> None:
-        self.cmd = shlex.split(os.environ.get("OMRBENCH_HOMR_CMD", "homr"))
-        cwd = os.environ.get("OMRBENCH_HOMR_CWD")
-        self.cwd = Path(cwd) if cwd else None
-
     def version(self) -> str | None:
         # homr exposes no --version flag; for a local checkout the git
         # description is the precise identifier. None for a PATH/uvx install.

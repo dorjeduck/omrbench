@@ -1,8 +1,11 @@
 """omrbench command line.
 
     omrbench fetch polish-scores [--dest DIR]
-    omrbench run   --adapter homr --corpus DIR [--out DIR]
-    omrbench score --pred DIR --corpus DIR [--metric music21]
+    omrbench run   --engine ENGINE --corpus DIR [--metric music21]
+    omrbench score --engine ENGINE --corpus DIR [--metric music21]
+
+ENGINE names an entry in omrbench.toml; prediction and result paths are derived
+from it (predictions/<engine>/, results/<engine>/).
 """
 
 from __future__ import annotations
@@ -35,28 +38,32 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
-    from omrbench.adapters import get_adapter
     from omrbench.corpus import discover
+    from omrbench.engines import load_engine
 
-    adapter = get_adapter(args.adapter)
+    try:
+        engine = load_engine(args.engine)
+    except (FileNotFoundError, KeyError) as exc:
+        print(str(exc).strip("'\""), file=sys.stderr)
+        return 2
     samples = discover(Path(args.corpus))
-    out_dir = Path(args.out) if args.out else Path("predictions") / args.adapter
-    results = adapter.run_corpus(samples, out_dir)
+    out_dir = Path("predictions") / args.engine
+    results = engine.run_corpus(samples, out_dir)
     ok = sum(1 for v in results.values() if v)
     # Capture the engine version now, while the engine is present, so `score`
     # (which imports no engine) can read it back from disk later.
     (out_dir / "run.json").write_text(
         json.dumps(
             {
-                "engine": adapter.name,
-                "engine_version": adapter.version(),
+                "engine": args.engine,
+                "engine_version": engine.version(),
                 "corpus": str(args.corpus),
                 "date": datetime.now(timezone.utc).isoformat(),
             },
             indent=2,
         )
     )
-    print(f"{adapter.name}: {ok}/{len(results)} samples produced -> {out_dir}")
+    print(f"{args.engine}: {ok}/{len(results)} samples produced -> {out_dir}")
     return 0
 
 
@@ -67,7 +74,7 @@ def _cmd_score(args: argparse.Namespace) -> int:
 
     metric = get_metric(args.metric)
     samples = discover(Path(args.corpus))
-    pred_dir = Path(args.pred)
+    pred_dir = Path("predictions") / args.engine
     report = Report(metric=metric.name, corpus=str(args.corpus))
     for sample in samples:
         reference = (
@@ -81,10 +88,10 @@ def _cmd_score(args: argparse.Namespace) -> int:
         report.samples.append(metric.score(prediction, reference, sample.id))
     print(report.render())
 
-    engine, engine_version = _read_run_meta(pred_dir)
+    engine_version = _read_run_version(pred_dir)
     date = datetime.now(timezone.utc)
-    record = report.to_record(engine, engine_version, _tier_of(args.corpus), date.isoformat())
-    results_dir = Path("results") / engine
+    record = report.to_record(args.engine, engine_version, _tier_of(args.corpus), date.isoformat())
+    results_dir = Path("results") / args.engine
     results_dir.mkdir(parents=True, exist_ok=True)
     out = results_dir / f"{date.strftime('%Y%m%dT%H%M%SZ')}.json"
     out.write_text(json.dumps(record, indent=2))
@@ -92,14 +99,13 @@ def _cmd_score(args: argparse.Namespace) -> int:
     return 0
 
 
-def _read_run_meta(pred_dir: Path) -> tuple[str, str | None]:
-    """Engine name + version from the predictions' run.json, falling back to the
-    prediction dir name when predictions were produced outside `omrbench run`."""
+def _read_run_version(pred_dir: Path) -> str | None:
+    """Engine version captured at `run` time, from the predictions' run.json.
+    None when predictions were produced outside `omrbench run`."""
     meta_path = pred_dir / "run.json"
     if meta_path.exists():
-        meta = json.loads(meta_path.read_text())
-        return meta.get("engine", pred_dir.name), meta.get("engine_version")
-    return pred_dir.name, None
+        return json.loads(meta_path.read_text()).get("engine_version")
+    return None
 
 
 def _tier_of(corpus: str) -> str | None:
@@ -126,13 +132,12 @@ def main(argv: list[str] | None = None) -> int:
     p_fetch.set_defaults(func=_cmd_fetch)
 
     p_run = sub.add_parser("run", help="run an OMR engine over a corpus")
-    p_run.add_argument("--adapter", required=True)
+    p_run.add_argument("--engine", required=True, help="engine name from omrbench.toml")
     p_run.add_argument("--corpus", required=True)
-    p_run.add_argument("--out")
     p_run.set_defaults(func=_cmd_run)
 
     p_score = sub.add_parser("score", help="score predictions against a corpus")
-    p_score.add_argument("--pred", required=True)
+    p_score.add_argument("--engine", required=True, help="engine name (predictions/<engine>/)")
     p_score.add_argument("--corpus", required=True)
     p_score.add_argument("--metric", default="music21")
     p_score.set_defaults(func=_cmd_score)
