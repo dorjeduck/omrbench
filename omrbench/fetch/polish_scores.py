@@ -19,7 +19,6 @@ import yaml
 
 _IMAGE_KEYS = ("image", "img", "scan", "page")
 _MUSICXML_KEYS = ("musicxml", "music_xml", "xml", "mxml")
-_KERN_KEYS = ("kern", "krn", "humdrum")
 
 _LICENSE_NOTE = "evaluation only — do not include in training data (btrkeks/polish-scores)"
 
@@ -44,9 +43,8 @@ def fetch(dest: Path, split: str = "test") -> int:
     columns = list(data.features)
     image_key = _pick(columns, _IMAGE_KEYS)
     musicxml_key = _pick(columns, _MUSICXML_KEYS)
-    kern_key = _pick(columns, _KERN_KEYS)
     print(f"columns={columns}")
-    print(f"mapped image={image_key} musicxml={musicxml_key} kern={kern_key}")
+    print(f"mapped image={image_key} musicxml={musicxml_key}")
     if image_key is None or musicxml_key is None:
         raise RuntimeError(
             "could not map image/musicxml columns; inspect the printed columns "
@@ -62,8 +60,6 @@ def fetch(dest: Path, split: str = "test") -> int:
 
         row[image_key].save(sample_dir / "image.png")
         _write_text(sample_dir / "reference.musicxml", row[musicxml_key])
-        if kern_key and row.get(kern_key):
-            _write_text(sample_dir / "reference.krn", row[kern_key])
         (sample_dir / "meta.yaml").write_text(
             yaml.safe_dump(
                 {
