@@ -75,13 +75,9 @@ def _cmd_score(args: argparse.Namespace) -> int:
     metric = get_metric(args.metric)
     samples = discover(Path(args.corpus))
     pred_dir = Path("predictions") / args.engine
-    report = Report(metric=metric.name, corpus=str(args.corpus))
+    report = Report(metric=metric, corpus=str(args.corpus))
     for sample in samples:
-        reference = (
-            sample.reference_kern
-            if getattr(metric, "requires_reference", "musicxml") == "kern"
-            else sample.reference_musicxml
-        )
+        reference = sample.reference_musicxml
         if not reference.exists():
             continue
         prediction = pred_dir / f"{sample.id}.musicxml"

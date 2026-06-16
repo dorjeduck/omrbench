@@ -1,12 +1,13 @@
-"""Aggregate per-sample scores into a report. Micro-SER (pooled distance over
-pooled reference length) is the headline number; macro is the per-sample mean."""
+"""Aggregate per-sample results into a report. The report is metric-agnostic:
+the headline numbers come from `metric.aggregate`, and worst-sample ranking
+uses the metric's declared `primary` field, so no metric is special-cased here.
+"""
 
 from __future__ import annotations
 
-import statistics
 from dataclasses import dataclass, field
 
-from omrbench.score.music21_metric import SampleScore
+from omrbench.score.base import Metric, SampleResult, default_format
 
 #: bump when the persisted result-record shape changes incompatibly
 RECORD_SCHEMA_VERSION = 1
@@ -14,34 +15,21 @@ RECORD_SCHEMA_VERSION = 1
 
 @dataclass
 class Report:
-    metric: str
+    metric: Metric
     corpus: str
-    samples: list[SampleScore] = field(default_factory=list)
+    samples: list[SampleResult] = field(default_factory=list)
 
     @property
-    def scored(self) -> list[SampleScore]:
+    def scored(self) -> list[SampleResult]:
         return [s for s in self.samples if s.ok]
 
     @property
-    def micro_ser(self) -> float:
-        total_len = sum(s.reference_length for s in self.scored)
-        if total_len == 0:
-            return 0.0
-        return sum(s.distance for s in self.scored) / total_len
+    def summary(self) -> dict[str, float]:
+        return self.metric.aggregate(self.scored)
 
-    @property
-    def macro_ser(self) -> float:
-        scored = self.scored
-        if not scored:
-            return 0.0
-        return sum(s.ser for s in scored) / len(scored)
-
-    @property
-    def median_ser(self) -> float:
-        scored = self.scored
-        if not scored:
-            return 0.0
-        return statistics.median(s.ser for s in scored)
+    def _worst(self, n: int = 10) -> list[SampleResult]:
+        key = self.metric.primary
+        return sorted(self.scored, key=lambda s: s.fields.get(key, 0.0), reverse=True)[:n]
 
     def to_record(
         self,
@@ -51,46 +39,49 @@ class Report:
         date: str,
     ) -> dict:
         """A self-describing result record: metadata + aggregates + every
-        per-sample score, so history/comparison/worst-N are views over JSON
+        per-sample result, so history/comparison/worst-N are views over JSON
         with no re-run. Imports no engine."""
         return {
             "schema_version": RECORD_SCHEMA_VERSION,
             "engine": engine,
             "engine_version": engine_version,
-            "metric": self.metric,
+            "metric": self.metric.name,
             "corpus": self.corpus,
             "tier": tier,
             "date": date,
             "summary": {
                 "samples_total": len(self.samples),
                 "samples_scored": len(self.scored),
-                "micro_ser": round(self.micro_ser, 6),
-                "macro_ser": round(self.macro_ser, 6),
-                "median_ser": round(self.median_ser, 6),
+                **{k: round(v, 6) for k, v in self.summary.items()},
             },
             "samples": [
                 {
                     "id": s.sample_id,
-                    "distance": s.distance,
-                    "reference_length": s.reference_length,
-                    "ser": round(s.ser, 6),
                     "ok": s.ok,
+                    **{k: round(v, 6) for k, v in s.fields.items()},
                 }
                 for s in self.samples
             ],
         }
 
     def render(self) -> str:
+        fmt = getattr(self.metric, "format", default_format)
         lines = [
             f"corpus : {self.corpus}",
-            f"metric : {self.metric}",
+            f"metric : {self.metric.name}",
             f"samples: {len(self.scored)} scored / {len(self.samples)} total",
-            f"micro-SER: {100 * self.micro_ser:.2f}%",
-            f"macro-SER: {100 * self.macro_ser:.2f}%",
-            "",
-            "worst samples:",
         ]
-        worst = sorted(self.scored, key=lambda s: s.ser, reverse=True)[:10]
-        for s in worst:
-            lines.append(f"  {s.sample_id:<24} SER {100 * s.ser:6.2f}%  ({s.distance}/{s.reference_length})")
+        for key, value in self.summary.items():
+            lines.append(f"{key}: {fmt(key, value)}")
+        lines += ["", "worst samples:"]
+        primary = self.metric.primary
+        for s in self._worst():
+            head = f"{primary} {fmt(primary, s.fields.get(primary, 0.0))}"
+            detail = "  ".join(
+                f"{k} {fmt(k, v)}" for k, v in s.fields.items() if k != primary
+            )
+            line = f"  {s.sample_id:<24} {head}"
+            if detail:
+                line += f"  ({detail})"
+            lines.append(line)
         return "\n".join(lines)

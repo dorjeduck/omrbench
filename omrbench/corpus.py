@@ -6,7 +6,6 @@ its id and contains:
     <id>/
         image.png            # the OMR input
         reference.musicxml   # the ground truth (required for scoring)
-        reference.krn        # optional, for the OMR-NED metric
         meta.yaml            # provenance + license + tier
 
 Tier-1 (synthetic, rendered-from-MusicXML) and Tier-2 (real scans) live in
@@ -43,10 +42,6 @@ class Sample:
     @property
     def reference_musicxml(self) -> Path:
         return self.dir / "reference.musicxml"
-
-    @property
-    def reference_kern(self) -> Path:
-        return self.dir / "reference.krn"
 
     @property
     def meta(self) -> dict:

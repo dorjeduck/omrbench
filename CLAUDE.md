@@ -13,7 +13,7 @@ anyone) can adopt or run alongside their own project.
 ## The one rule that defines the architecture
 
 **The benchmark core must never import an OMR engine.** `corpus.py`, `score/`,
-and `cli.py` work on MusicXML/`**kern` files alone. Engines plug in only through
+and `cli.py` work on MusicXML files alone. Engines plug in only through
 `adapters/`, and adapters **shell out** (subprocess) — they do not import the
 engine either. This is what keeps results comparable and lets someone install
 omrbench with zero OMR tools present. If a change makes the core import an
@@ -40,21 +40,43 @@ cli.py       omrbench fetch | run | score
 
 ## Metrics
 
+Metrics are pluggable via a **structural contract** (`score/base.py`): a metric
+is any object with `name`, `primary`, `score()`, `aggregate()`, and an optional
+`format()` — a `typing.Protocol`, **not** an ABC,
+so a metric satisfies it by shape and need not import/subclass anything (a third
+party could drop one in without importing omrbench). The core is metric-agnostic:
+
+- A metric owns its own *result shape* — `SampleResult.fields` is an open dict of
+  named per-sample numbers — and its own *aggregation* (`aggregate()` returns
+  whatever summary keys it defines). The report and the JSON record just carry
+  whatever the metric produces; `primary` names the one field (lower=better) used
+  for ranking/medians.
+- Display units live with the metric, not the report: the optional `format(key,
+  value)` hook renders that metric's numbers (e.g. ratios as `%`, counts as
+  ints); the report falls back to `base.default_format` if a metric omits it.
+
+Metrics:
+
 - `music21` (default): note/key normalized edit distance, MusicXML-vs-MusicXML.
   No engine vocabulary, no `**kern` step. SER = distance / reference length.
-- `omr-ned` (opt-in, currently a stub): OMR-literature metric on `**kern`. Only
-  the engine *output* needs MusicXML->kern conversion — the known-fragile step,
-  deliberately kept behind the flag, not in the default path.
+- `omr-ned` (opt-in, `.[omr-ned]` extra): **musicdiff's OMR-NED** — the metric is
+  computed by `musicdiff` (Greg Chapman's MusicDiff, MIT; the implementation the
+  Sheet Music Benchmark paper builds on) and we read its result:
+  `(I + D) / (N1 + N2)`. It works on parsed MusicXML directly. Numbers are
+  musicdiff's, not guaranteed paper-identical. musicdiff is heavy/slow, hence
+  opt-in.
 
 ## Commands
 
 ```bash
 pip install -e .            # core
 pip install -e '.[fetch]'   # + dataset download (datasets, huggingface_hub)
+pip install -e '.[omr-ned]' # + the omr-ned metric (musicdiff)
 
 omrbench fetch polish-scores
 omrbench run   --engine homr --corpus corpus/tier2_real/polish_scores
 omrbench score --engine homr --corpus corpus/tier2_real/polish_scores
+omrbench score --engine homr --corpus corpus/tier2_real/polish_scores --metric omr-ned
 ```
 
 `--engine` names an entry in `omrbench.toml` (see `omrbench.toml.example`);
@@ -87,10 +109,19 @@ Implement `Adapter.predict(sample, out_path) -> bool` in
 raise) and register it in `omrbench/adapters/__init__.py`. Mirror
 `adapters/homr.py`.
 
+## Adding a metric
+
+Write a class satisfying `score/base.Metric` (see `score/music21_metric.py`) and
+register it as a zero-arg factory in `score/__init__.py`'s `REGISTRY` — one line.
+Factories, not classes, so a metric with heavy/optional deps imports them only
+when selected (mirror how `omr-ned` lazy-imports `musicdiff`, and put such deps
+in their own extra). No change to `report.py`/`cli.py` should be needed; if one
+is, the contract is leaking and the change is suspect.
+
 ## Conventions
 
 - Code license is **MIT** (corpus data carries its own licenses — see READMEs).
-- Python >= 3.10; keep the core dependency set small (music21, editdistance,
-  pyyaml). Heavy/optional deps go in the `fetch` extra.
+- Python >= 3.11; keep the core dependency set small (music21, editdistance,
+  pyyaml). Heavy/optional deps go in their own extra (`fetch`, `omr-ned`).
 - Skeleton stage — prefer small, verifiable additions over speculative
   framework. Match the existing module style.

@@ -11,11 +11,13 @@ is documented so other tools' output is scored identically.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import statistics
 from pathlib import Path
 
 import editdistance
 from music21 import chord, converter, key, note, stream
+
+from omrbench.score.base import SampleResult, default_format
 
 
 def _tokenize(score: stream.Score) -> list[str]:
@@ -50,33 +52,46 @@ def tokenize_file(path: Path) -> list[str]:
     return _tokenize(wrapped)
 
 
-@dataclass
-class SampleScore:
-    sample_id: str
-    distance: int
-    reference_length: int
-    ok: bool
+def _fields(distance: int, reference_length: int) -> dict[str, float]:
+    ser = distance / reference_length if reference_length else 0.0
+    return {"distance": distance, "reference_length": reference_length, "ser": ser}
 
-    @property
-    def ser(self) -> float:
-        if self.reference_length == 0:
-            return 0.0
-        return self.distance / self.reference_length
+
+#: ratio fields shown as percentages; other fields (counts) use default_format
+_PERCENT = {"ser", "micro_ser", "macro_ser", "median_ser"}
 
 
 class Music21Metric:
     name = "music21"
-    requires_reference = "musicxml"
+    primary = "ser"
 
-    def score(self, prediction: Path, reference: Path, sample_id: str) -> SampleScore:
+    def format(self, key: str, value: float) -> str:
+        if key in _PERCENT:
+            return f"{100 * value:.2f}%"
+        return default_format(key, value)
+
+    def score(self, prediction: Path, reference: Path, sample_id: str) -> SampleResult:
         try:
             ref_tokens = tokenize_file(reference)
         except Exception:
-            return SampleScore(sample_id, 0, 0, ok=False)
+            return SampleResult(sample_id, ok=False, fields={})
         try:
             pred_tokens = tokenize_file(prediction)
         except Exception:
             # Engine produced unparseable / no output: count full reference as wrong.
-            return SampleScore(sample_id, len(ref_tokens), len(ref_tokens), ok=True)
+            n = len(ref_tokens)
+            return SampleResult(sample_id, ok=True, fields=_fields(n, n))
         distance = editdistance.eval(pred_tokens, ref_tokens)
-        return SampleScore(sample_id, distance, len(ref_tokens), ok=True)
+        return SampleResult(sample_id, ok=True, fields=_fields(distance, len(ref_tokens)))
+
+    def aggregate(self, results: list[SampleResult]) -> dict[str, float]:
+        # Micro: pooled distance over pooled reference length. Macro/median: over
+        # per-sample SER.
+        total_distance = sum(r.fields["distance"] for r in results)
+        total_length = sum(r.fields["reference_length"] for r in results)
+        sers = [r.fields["ser"] for r in results]
+        return {
+            "micro_ser": total_distance / total_length if total_length else 0.0,
+            "macro_ser": sum(sers) / len(sers) if sers else 0.0,
+            "median_ser": statistics.median(sers) if sers else 0.0,
+        }
