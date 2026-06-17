@@ -17,6 +17,9 @@ dependencies = [
 fetch = ["datasets>=2.18", "huggingface_hub>=0.23", "pillow>=10.0"]
 # Only needed for `--metric omr-ned`; musicdiff pulls in converter21 + numpy.
 omr-ned = ["musicdiff>=5.2"]
+# Only needed for the local web UI (`omrbench serve`). The frontend (Verovio,
+# Chart.js) loads from CDN in the browser, so no extra Python deps for it.
+serve = ["fastapi>=0.110", "uvicorn>=0.29"]
 
 [project.scripts]
 omrbench = "omrbench.cli:main"
@@ -27,3 +30,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["omrbench*"]
+
+[tool.setuptools.package-data]
+"omrbench.server" = ["static/*"]

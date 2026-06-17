@@ -95,6 +95,22 @@ def _cmd_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    # Lazy import so the core install (without the `serve` extra) still works.
+    try:
+        from omrbench.server.app import run_server
+    except ImportError:
+        print(
+            "the web UI needs the serve extra; install it with "
+            "`pip install -e '.[serve]'`",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"omrbench serving on http://{args.host}:{args.port}")
+    run_server(host=args.host, port=args.port)
+    return 0
+
+
 def _read_run_version(pred_dir: Path) -> str | None:
     """Engine version captured at `run` time, from the predictions' run.json.
     None when predictions were produced outside `omrbench run`."""
@@ -137,6 +153,11 @@ def main(argv: list[str] | None = None) -> int:
     p_score.add_argument("--corpus", required=True)
     p_score.add_argument("--metric", default="music21")
     p_score.set_defaults(func=_cmd_score)
+
+    p_serve = sub.add_parser("serve", help="run the local web UI (needs .[serve])")
+    p_serve.add_argument("--host", default="127.0.0.1")
+    p_serve.add_argument("--port", type=int, default=8000)
+    p_serve.set_defaults(func=_cmd_serve)
 
     args = parser.parse_args(argv)
     return int(args.func(args))

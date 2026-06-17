@@ -45,6 +45,7 @@ them separate.
 ```bash
 pip install -e .            # core: corpus + scorer + adapters
 pip install -e '.[fetch]'   # + dataset download (datasets, huggingface_hub)
+pip install -e '.[serve]'   # + local web UI (see serve.md)
 ```
 
 ## Use
@@ -63,6 +64,17 @@ omrbench score --engine homr --corpus corpus/tier2_real/polish_scores
 
 Prediction and result paths are derived from the engine name
 (`predictions/<engine>/`, `results/<engine>/`) — nothing to set by hand.
+
+### Web UI
+
+```bash
+pip install -e '.[serve]'
+omrbench serve              # -> http://127.0.0.1:8000
+```
+
+A lightweight, read-only local interface to browse runs and trends, inspect a
+case's prediction side by side with the ground truth (rendered in-browser), and
+read what each metric measures. See **[serve.md](serve.md)** for details.
 
 ### Engines
 
