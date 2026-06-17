@@ -45,6 +45,7 @@ them separate.
 ```bash
 pip install -e .            # core: corpus + scorer + adapters
 pip install -e '.[fetch]'   # + dataset download (datasets, huggingface_hub)
+pip install -e '.[omr-ned]' # + the omr-ned metric (musicdiff)
 pip install -e '.[serve]'   # + local web UI (see serve.md)
 ```
 
@@ -114,16 +115,21 @@ file to force a re-run.
 - **`music21`** (default): note/symbol-level normalized edit distance, computed
   MusicXML-vs-MusicXML. No engine vocabulary, no `**kern` step. SER = edit
   distance / reference length (0.0 = perfect).
-- **`omr-ned`** (optional, *not yet implemented*): the OMR-literature metric on
-  Humdrum `**kern`. The reference ships `**kern`, so only the engine output
-  needs conversion — the fragile step, kept behind an opt-in flag.
+- **`omr-ned`** (optional, `.[omr-ned]` extra): **musicdiff's OMR-NED**, computed
+  by [musicdiff](https://github.com/gregchapman-dev/musicdiff) (Greg Chapman's
+  MusicDiff, MIT) directly on the parsed MusicXML — `(I + D) / (N1 + N2)`. It is
+  the implementation the [Sheet Music Benchmark paper](https://arxiv.org/abs/2506.10488)
+  builds on; the numbers are musicdiff's own, not guaranteed paper-identical.
+  musicdiff is heavy and slow, hence opt-in.
 
-> **On the metric.** SER here is a normalized Levenshtein edit distance over a
+> **On the metrics.** SER is a normalized Levenshtein edit distance over a
 > reference symbol sequence — the same construction as Word/Character Error Rate
 > in speech recognition and OCR. The construction is standard; the name "Symbol
 > Error Rate" and the specific implementation (music21 token stream,
-> MusicXML-vs-MusicXML) are this project's own. `omr-ned` is intended to follow
-> the separate OMR-NED metric.
+> MusicXML-vs-MusicXML) are this project's own. `omr-ned` instead defers entirely
+> to musicdiff's published OMR-NED.
+
+Both metrics work on MusicXML directly; neither uses a `**kern` step.
 
 ## Adding an engine
 
