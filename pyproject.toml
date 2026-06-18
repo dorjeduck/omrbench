@@ -20,6 +20,8 @@ omr-ned = ["musicdiff>=5.2"]
 # Only needed for the local web UI (`omrbench serve`). The frontend (Verovio,
 # Chart.js) loads from CDN in the browser, so no extra Python deps for it.
 serve = ["fastapi>=0.110", "uvicorn>=0.29"]
+# Only needed to run the test suite (`pytest`).
+dev = ["pytest>=8.0"]
 
 [project.scripts]
 omrbench = "omrbench.cli:main"

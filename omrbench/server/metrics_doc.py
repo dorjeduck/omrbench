@@ -15,11 +15,13 @@ DESCRIPTIONS: dict[str, dict] = {
         "title": "music21 SER — symbol-level edit distance",
         "summary": (
             "Both the prediction and the reference MusicXML are parsed with "
-            "music21 and flattened into one ordered token stream — key "
-            "signatures, notes, chords and rests — then compared with "
-            "Levenshtein (edit) distance. The per-sample score is "
-            "SER = edit_distance / reference_token_count, so 0.0 is perfect and "
-            "lower is better. It is deliberately format-only: no engine "
+            "music21 into one ordered token stream per part — key signatures, "
+            "notes, chords and rests, each at its musical position. Corresponding "
+            "parts are aligned by document position and compared with Levenshtein "
+            "(edit) distance, and the per-part distances are pooled, so one staff's "
+            "tokens cannot cancel against another's. The per-sample score is "
+            "SER = total_edit_distance / reference_token_count, so 0.0 is perfect "
+            "and lower is better. It is deliberately format-only: no engine "
             "vocabulary and no **kern step, so any tool emitting MusicXML is "
             "scored identically."
         ),

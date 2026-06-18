@@ -1,9 +1,20 @@
 """Default metric: note/symbol-level normalized edit distance over MusicXML.
 
-Both prediction and reference are parsed with music21, flattened to a single
-ordered token stream (key signatures, notes, chords, rests), and compared with
-Levenshtein distance. The score is SER = edit_distance / len(reference_tokens),
-so 0.0 is perfect and lower is better.
+Both prediction and reference are parsed with music21 and turned into one ordered
+token stream *per part* (key signatures, notes, chords, rests, each at its place
+in the part by musical offset). Corresponding parts are aligned by index and
+compared with Levenshtein distance; the per-part distances are pooled. The score
+is SER = total_edit_distance / total_reference_tokens, so 0.0 is perfect and
+lower is better.
+
+Why per part, not one flat stream: concatenating every staff into a single
+sequence lets one part's tokens cancel against another's, so an engine that
+merges two staves into one (or emits them in a different order) could score
+better or worse for reasons unrelated to recognition. Keeping parts separate and
+aligning them by document position scores each staff on its own terms. The
+correspondence is positional — reference part *i* against prediction part *i*; a
+missing or extra predicted part is counted as pure deletion/insertion against the
+reference part at that index.
 
 Deliberately format-only: no engine vocabulary, no **kern step. The token form
 is documented so other tools' output is scored identically.
@@ -20,15 +31,27 @@ from music21 import chord, converter, key, note, stream
 from omrbench.score.base import SampleResult, default_format
 
 
-def _tokenize(score: stream.Score) -> list[str]:
-    tokens: list[str] = []
-    # Sort parts for determinism, then read each part in document order.
-    for part in score.parts:
-        for element in part.recurse().notesAndRests:
-            tokens.append(_token_for(element))
-        for ks in part.recurse().getElementsByClass(key.KeySignature):
-            tokens.append(f"K:{ks.sharps}")
-    return tokens
+def _tokenize_part(part: stream.Stream) -> list[str]:
+    # Flatten so offsets are absolute within the part, then emit notes/rests and
+    # key signatures interleaved in musical order. At a shared offset a key
+    # signature precedes the notes it governs (priority 0 before 1).
+    flat = part.flatten()
+    events: list[tuple[float, int, str]] = []
+    for element in flat.notesAndRests:
+        events.append((float(element.offset), 1, _token_for(element)))
+    for ks in flat.getElementsByClass(key.KeySignature):
+        events.append((float(ks.offset), 0, f"K:{ks.sharps}"))
+    events.sort(key=lambda e: (e[0], e[1]))
+    return [token for _, _, token in events]
+
+
+def _tokenize(score: stream.Score) -> list[list[str]]:
+    """One token list per part, in document order. A parse with no parts (a flat
+    stream) is treated as a single part."""
+    parts = list(score.parts)
+    if not parts:
+        return [_tokenize_part(score)]
+    return [_tokenize_part(part) for part in parts]
 
 
 def _token_for(element: object) -> str:
@@ -42,14 +65,26 @@ def _token_for(element: object) -> str:
     return f"?:{type(element).__name__}"
 
 
-def tokenize_file(path: Path) -> list[str]:
+def tokenize_file(path: Path) -> list[list[str]]:
+    """Parse a MusicXML file into one token list per part."""
     score = converter.parse(str(path))
     if isinstance(score, stream.Score):
         return _tokenize(score)
-    # Some parses return a flat Stream; wrap it.
-    wrapped = stream.Score()
-    wrapped.append(score)
-    return _tokenize(wrapped)
+    # Some parses return a flat Stream; treat it as a single part.
+    return [_tokenize_part(score)]
+
+
+def _distance(pred_parts: list[list[str]], ref_parts: list[list[str]]) -> tuple[int, int]:
+    """Pooled edit distance and reference length over index-aligned parts. A
+    part present on only one side is compared against an empty list, so it
+    contributes pure insertions or deletions."""
+    total = 0
+    for i in range(max(len(pred_parts), len(ref_parts))):
+        pred = pred_parts[i] if i < len(pred_parts) else []
+        ref = ref_parts[i] if i < len(ref_parts) else []
+        total += editdistance.eval(pred, ref)
+    reference_length = sum(len(ref) for ref in ref_parts)
+    return total, reference_length
 
 
 def _fields(distance: int, reference_length: int) -> dict[str, float]:
@@ -72,17 +107,17 @@ class Music21Metric:
 
     def score(self, prediction: Path, reference: Path, sample_id: str) -> SampleResult:
         try:
-            ref_tokens = tokenize_file(reference)
+            ref_parts = tokenize_file(reference)
         except Exception:
             return SampleResult(sample_id, ok=False, fields={})
         try:
-            pred_tokens = tokenize_file(prediction)
+            pred_parts = tokenize_file(prediction)
         except Exception:
             # Engine produced unparseable / no output: count full reference as wrong.
-            n = len(ref_tokens)
+            n = sum(len(ref) for ref in ref_parts)
             return SampleResult(sample_id, ok=True, fields=_fields(n, n))
-        distance = editdistance.eval(pred_tokens, ref_tokens)
-        return SampleResult(sample_id, ok=True, fields=_fields(distance, len(ref_tokens)))
+        distance, reference_length = _distance(pred_parts, ref_parts)
+        return SampleResult(sample_id, ok=True, fields=_fields(distance, reference_length))
 
     def aggregate(self, results: list[SampleResult]) -> dict[str, float]:
         # Micro: pooled distance over pooled reference length. Macro/median: over
