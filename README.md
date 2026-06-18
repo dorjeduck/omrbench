@@ -30,9 +30,9 @@ score/    MusicXML-vs-MusicXML, imports no engine
 ## Corpus tiers (reported separately, never mixed)
 
 - **Tier 1 — synthetic**: engraved scores with encoded ground truth. Ground
-  truth is exact and free. Cheap to scale but optimistic vs real-world scans.
-  (Image degradations to probe robustness are a planned capability, not yet
-  implemented.)
+  truth is exact and free. Cheap to scale but optimistic vs real-world scans —
+  `omrbench augment` can degrade the images (blur/rotate/noise/JPEG) to probe how
+  far that optimism holds.
 - **Tier 2 — real scans**: hand-verified transcriptions of real documents.
   Predictive of actual quality, but limited in size. Seeded from
   [`btrkeks/polish-scores`](https://huggingface.co/datasets/btrkeks/polish-scores)
@@ -48,6 +48,7 @@ pip install -e .            # core: corpus + scorer + adapters
 pip install -e '.[fetch]'   # + dataset download (datasets, huggingface_hub)
 pip install -e '.[omr-ned]' # + the omr-ned metric (musicdiff)
 pip install -e '.[serve]'   # + local web UI (see serve.md)
+pip install -e '.[augment]' # + corpus image degradation (omrbench augment)
 ```
 
 ## Use
@@ -63,6 +64,20 @@ omrbench run --engine homr --corpus corpus/tier2_real/polish_scores
 # 3. score the predictions against the ground truth
 omrbench score --engine homr --corpus corpus/tier2_real/polish_scores
 ```
+
+To probe robustness, write a degraded copy of a Tier-1 corpus and run against it
+(reported separately — it stays the same tier as its source):
+
+```bash
+omrbench augment --corpus corpus/tier1_synthetic/grandstaff \
+                 --out    corpus/tier1_synthetic/grandstaff_blur \
+                 --blur 1.2 --rotate 2 --noise 12 --jpeg 45 --seed 1
+```
+
+Degradations are Pillow-only and reproducible (same `--seed` → byte-identical
+images); references are copied unchanged and the applied degradations are
+recorded in each sample's `meta.yaml`. It degrades, it does not upscale — it will
+not make a low-DPI corpus easier for a resolution-sensitive engine.
 
 Prediction and result paths are derived from the engine name
 (`predictions/<engine>/`, `results/<engine>/`) — nothing to set by hand.

@@ -95,6 +95,34 @@ def _cmd_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_augment(args: argparse.Namespace) -> int:
+    # Lazy import so the core install (without the `augment` extra) still works.
+    try:
+        from omrbench.augment import augment_corpus
+    except ImportError:
+        print(
+            "augment needs the augment extra; install it with "
+            "`pip install -e '.[augment]'`",
+            file=sys.stderr,
+        )
+        return 2
+    degradations = {
+        "rotate": args.rotate,
+        "blur": args.blur,
+        "noise": args.noise,
+        "jpeg": args.jpeg,
+    }
+    if all(v is None for v in degradations.values()):
+        print(
+            "specify at least one degradation (--blur/--rotate/--noise/--jpeg)",
+            file=sys.stderr,
+        )
+        return 2
+    n = augment_corpus(Path(args.corpus), Path(args.out), degradations=degradations, seed=args.seed)
+    print(f"wrote {n} augmented samples to {args.out}")
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     # Lazy import so the core install (without the `serve` extra) still works.
     try:
@@ -153,6 +181,16 @@ def main(argv: list[str] | None = None) -> int:
     p_score.add_argument("--corpus", required=True)
     p_score.add_argument("--metric", default="music21")
     p_score.set_defaults(func=_cmd_score)
+
+    p_aug = sub.add_parser("augment", help="write a degraded copy of a corpus (needs .[augment])")
+    p_aug.add_argument("--corpus", required=True, help="source corpus dir")
+    p_aug.add_argument("--out", required=True, help="destination corpus dir (must differ)")
+    p_aug.add_argument("--blur", type=float, help="gaussian blur radius")
+    p_aug.add_argument("--rotate", type=float, help="max rotation magnitude in degrees (+/-)")
+    p_aug.add_argument("--noise", type=float, help="uniform pixel-noise magnitude (0-255)")
+    p_aug.add_argument("--jpeg", type=int, help="JPEG recompression quality (1-95)")
+    p_aug.add_argument("--seed", type=int, default=0, help="augmentation seed (default 0)")
+    p_aug.set_defaults(func=_cmd_augment)
 
     p_serve = sub.add_parser("serve", help="run the local web UI (needs .[serve])")
     p_serve.add_argument("--host", default="127.0.0.1")
