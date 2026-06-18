@@ -1,28 +1,35 @@
 # Tier 1 — synthetic corpus
 
-Samples rendered from known-good, **public-domain** MusicXML. Ground truth is
-the source MusicXML itself, so it is exact and free, and the rendered image can
-have controlled degradations applied.
+Engraved scores with encoded ground truth. The image is synthetic (typeset, not
+scanned) and the ground truth is exact and free, which makes this tier cheap to
+scale but **optimistic** relative to real scans — keep its numbers separate from
+Tier 2 in any report.
+
+> **Status.** The only Tier-1 source so far is **GrandStaff**: engraved excerpts
+> whose images come straight from the source dataset at its native (low, ~70 DPI)
+> resolution, with `**kern` ground truth converted to MusicXML at fetch time. The
+> rendering-from-public-domain-MusicXML pipeline and the image degradations
+> sketched below are the intended design, **not yet implemented**.
 
 Layout per sample:
 
 ```
 <id>/
-  image.png            # rendered score (Verovio / LilyPond / MuseScore)
-  reference.musicxml   # the source MusicXML = ground truth
-  meta.yaml            # source, render engine, degradations, license
+  image.{jpg,png}      # the engraved score image
+  reference.musicxml   # ground truth
+  meta.yaml            # provenance + license + tier
 ```
 
-`meta.yaml`:
+A GrandStaff sample's `meta.yaml` today:
 
 ```yaml
 tier: tier1_synthetic
-source: <where the MusicXML came from>
-type: synthetic
-render_engine: verovio
-degradations: []        # e.g. [blur, perspective_warp, jpeg_q40]
-license: <public-domain / CC0 / ...>
+source: grandstaff
+type: engraved
+origin: <path within the source dataset>
+license: <dataset terms>
 ```
 
-These numbers are **optimistic** relative to real scans — keep them separate
-from Tier 2 in any report.
+Planned (once images are rendered from source MusicXML): a `render_engine` field
+and a `degradations` list (e.g. `[blur, perspective_warp, jpeg_q40]`) recording
+how each image was produced and degraded.

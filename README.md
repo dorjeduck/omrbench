@@ -29,9 +29,10 @@ score/    MusicXML-vs-MusicXML, imports no engine
 
 ## Corpus tiers (reported separately, never mixed)
 
-- **Tier 1 — synthetic**: rendered from known-good public-domain MusicXML.
-  Ground truth is exact and free, and degradations can be added. Cheap to scale
-  but optimistic vs real-world scans.
+- **Tier 1 — synthetic**: engraved scores with encoded ground truth. Ground
+  truth is exact and free. Cheap to scale but optimistic vs real-world scans.
+  (Image degradations to probe robustness are a planned capability, not yet
+  implemented.)
 - **Tier 2 — real scans**: hand-verified transcriptions of real documents.
   Predictive of actual quality, but limited in size. Seeded from
   [`btrkeks/polish-scores`](https://huggingface.co/datasets/btrkeks/polish-scores)
@@ -105,7 +106,10 @@ omrbench score --engine homr-0_6 --corpus corpus/tier2_real/polish_scores
 kern/image pairs (large download, cached); `--limit`/`--seed` select a
 reproducible subset. Note it is the training data of some engines (e.g. homr),
 so scores there are in-distribution and optimistic — choosing a source suited to
-the engine under test is the user's call.
+the engine under test is the user's call. Its images are small, low-resolution
+engraved excerpts (~70 DPI); engines that expect full-page ~300 DPI scans
+(e.g. Audiveris) may fail to transcribe them — a corpus/engine fit issue, not a
+recognition result.
 
 `run` caches: a sample with a non-empty output is not re-run. Delete the output
 file to force a re-run.
