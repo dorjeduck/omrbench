@@ -133,9 +133,12 @@ Both metrics work on MusicXML directly; neither uses a `**kern` step.
 
 ## Adding an engine
 
-Implement `Adapter.predict(sample, out_path) -> bool` in
-`omrbench/adapters/<engine>.py` (shell out; do not import the engine) and
-register it in `omrbench/adapters/__init__.py`. See `adapters/homr.py`.
+Two adapters ship: `homr` and `audiveris`. To add your own, implement
+`Adapter.predict(sample, out_path) -> bool` in `omrbench/adapters/<engine>.py`
+(shell out; do not import the engine) and register it in
+`omrbench/adapters/__init__.py`. See `adapters/homr.py` for an engine that emits
+`.musicxml` directly, or `adapters/audiveris.py` for one that exports compressed
+`.mxl` and needs unpacking.
 
 ## License
 

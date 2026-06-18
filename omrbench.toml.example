@@ -17,3 +17,11 @@ cmd     = "homr"
 adapter = "homr"
 cmd     = "poetry run homr"
 cwd     = "/path/to/homr-v0.6"
+
+[engines.audiveris]       # the Audiveris launcher script on PATH
+adapter = "audiveris"
+cmd     = "audiveris"
+
+[engines.audiveris-jar]   # or invoked straight from the jar
+adapter = "audiveris"
+cmd     = "java -jar /path/to/audiveris.jar"
