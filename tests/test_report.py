@@ -101,6 +101,16 @@ def test_to_record_includes_spread_keys():
     assert summary["max_ser"] == 1.0
 
 
+def test_to_score_record_is_run_free():
+    # the cached score (runs/<id>/scores/<metric>.json) carries only metric data;
+    # run-level metadata (engine, corpus, date) lives in run.json, not here
+    record = _report().to_score_record()
+    assert set(record) == {"schema_version", "metric", "summary", "samples"}
+    assert record["metric"] == "music21"
+    assert record["summary"]["samples_scored"] == 2
+    assert [s["id"] for s in record["samples"]] == ["0000", "0001", "0002"]
+
+
 def test_render_shows_spread_line_as_percent():
     text = _spread_report([0.0, 0.5, 1.0]).render()
     assert "spread :" in text

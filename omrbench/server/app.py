@@ -29,13 +29,20 @@ def create_app() -> FastAPI:
         return records.list_engines()
 
     @app.get("/api/runs")
-    def runs(engine: str | None = None) -> list[dict]:
-        return [asdict(r) for r in records.list_runs(engine)]
+    def runs() -> list[dict]:
+        return [asdict(r) for r in records.list_runs()]
 
-    @app.get("/api/runs/{engine}/{run_id}")
-    def run(engine: str, run_id: str) -> dict:
+    @app.get("/api/runs/{run_id}")
+    def run(run_id: str) -> dict:
         try:
-            return records.load_run(engine, run_id)
+            return records.load_run(run_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/runs/{run_id}/scores/{metric}")
+    def score(run_id: str, metric: str) -> dict:
+        try:
+            return records.load_score(run_id, metric)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -49,32 +56,29 @@ def create_app() -> FastAPI:
 
     @app.get("/api/file/musicxml")
     def musicxml(
-        corpus: str = Query(...),
-        engine: str = Query(...),
+        run_id: str = Query(...),
         sample_id: str = Query(...),
         side: str = Query(..., pattern="^(reference|prediction)$"),
     ) -> FileResponse:
-        path = _resolve(corpus, engine, sample_id, side)
+        path = _resolve(run_id, sample_id, side)
         return FileResponse(path, media_type="application/xml")
 
     @app.get("/api/file/image")
     def image(
-        corpus: str = Query(...),
-        engine: str = Query(...),
+        run_id: str = Query(...),
         sample_id: str = Query(...),
     ) -> FileResponse:
-        return FileResponse(_resolve(corpus, engine, sample_id, "image"))
+        return FileResponse(_resolve(run_id, sample_id, "image"))
 
     @app.post("/api/open")
     def open_file(
-        corpus: str = Query(...),
-        engine: str = Query(...),
+        run_id: str = Query(...),
         sample_id: str = Query(...),
         side: str = Query(..., pattern="^(reference|prediction|image)$"),
     ) -> dict:
         # The server is local, so it opens the file in the OS default app (the
         # user's MusicXML viewer / image viewer).
-        _open_in_default_app(_resolve(corpus, engine, sample_id, side))
+        _open_in_default_app(_resolve(run_id, sample_id, side))
         return {"ok": True}
 
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
@@ -84,9 +88,9 @@ def create_app() -> FastAPI:
 _SIDES = {"reference": "reference", "prediction": "prediction", "image": "image"}
 
 
-def _resolve(corpus: str, engine: str, sample_id: str, side: str) -> Path:
+def _resolve(run_id: str, sample_id: str, side: str) -> Path:
     """The on-disk file for one case+side, guarded against path traversal."""
-    paths = records.case_paths(corpus, engine, sample_id)
+    paths = records.case_paths(run_id, sample_id)
     path = getattr(paths, _SIDES[side])
     if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="file not found")

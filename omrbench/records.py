@@ -1,9 +1,10 @@
-"""Read layer over the on-disk benchmark artifacts — engine-free.
+"""Read layer over the on-disk runs — engine-free.
 
-Everything the CLI writes (`results/<engine>/<timestamp>.json`,
-`predictions/<engine>/<id>.musicxml`) is read back here, in one place, so the
-server (and, later, the CLI) share a single way to list run history and resolve a
-case's files. Pure file-reading; imports no OMR engine.
+Everything lives under `runs/<run-id>/` (see DESIGN.md): `run.json` (what was
+run), `predictions/<id>.musicxml` (engine output), and `scores/<metric>.json`
+(cached score). This module is the one place that reads it back, shared by the
+server. A run may have zero, one, or several cached metric scores. Pure
+file-reading; imports no OMR engine.
 """
 
 from __future__ import annotations
@@ -13,64 +14,77 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from omrbench.corpus import Sample
+from omrbench.runs import Run, list_runs as _list_runs, load_run as _load_run
 
-RESULTS_DIR = Path("results")
-PREDICTIONS_DIR = Path("predictions")
+
+def _tier_of(corpus: str) -> str | None:
+    for part in Path(corpus).parts:
+        if part.startswith("tier"):
+            return part
+    return None
 
 
 @dataclass
 class RunMeta:
-    """The header of a result record, without its per-sample array."""
+    """A run's header plus which metrics have been scored, with their summaries
+    (not the per-sample arrays). One row in the runs list."""
 
+    run_id: str
     engine: str
-    run_id: str  # the timestamp stem of the JSON file
     engine_version: str | None
-    metric: str
     corpus: str
     tier: str | None
     date: str
-    summary: dict
+    metrics: list[str]          # cached metric names for this run
+    summaries: dict             # metric -> summary dict
+
+
+def _cached_scores(run: Run) -> tuple[list[str], dict]:
+    metrics: list[str] = []
+    summaries: dict = {}
+    if run.scores_dir.is_dir():
+        for path in sorted(run.scores_dir.glob("*.json")):
+            metrics.append(path.stem)
+            summaries[path.stem] = json.loads(path.read_text()).get("summary", {})
+    return metrics, summaries
+
+
+def _meta(run: Run) -> RunMeta:
+    metrics, summaries = _cached_scores(run)
+    return RunMeta(
+        run_id=run.run_id,
+        engine=run.engine,
+        engine_version=run.engine_version,
+        corpus=run.corpus,
+        tier=_tier_of(run.corpus),
+        date=run.date,
+        metrics=metrics,
+        summaries=summaries,
+    )
 
 
 def list_engines() -> list[str]:
-    """Engines that have at least one result record."""
-    if not RESULTS_DIR.is_dir():
-        return []
-    return sorted(p.name for p in RESULTS_DIR.iterdir() if p.is_dir())
+    """Distinct engines that have at least one run."""
+    return sorted({run.engine for run in _list_runs()})
 
 
-def list_runs(engine: str | None = None) -> list[RunMeta]:
-    """Every result record (optionally for one engine), newest first. Reads only
-    the header fields — not the (potentially large) per-sample array."""
-    engines = [engine] if engine else list_engines()
-    runs: list[RunMeta] = []
-    for eng in engines:
-        eng_dir = RESULTS_DIR / eng
-        if not eng_dir.is_dir():
-            continue
-        for path in sorted(eng_dir.glob("*.json")):
-            record = json.loads(path.read_text())
-            runs.append(
-                RunMeta(
-                    engine=record.get("engine", eng),
-                    run_id=path.stem,
-                    engine_version=record.get("engine_version"),
-                    metric=record.get("metric", ""),
-                    corpus=record.get("corpus", ""),
-                    tier=record.get("tier"),
-                    date=record.get("date", ""),
-                    summary=record.get("summary", {}),
-                )
-            )
-    runs.sort(key=lambda r: r.date, reverse=True)
-    return runs
+def list_runs() -> list[RunMeta]:
+    """Every run, newest first, with its cached metric summaries."""
+    return [_meta(run) for run in _list_runs()]
 
 
-def load_run(engine: str, run_id: str) -> dict:
-    """The full result record (summary + samples) for one run."""
-    path = RESULTS_DIR / engine / f"{run_id}.json"
+def load_run(run_id: str) -> dict:
+    """A run's metadata + the list of metrics it has been scored on."""
+    run = _load_run(run_id)
+    metrics, summaries = _cached_scores(run)
+    return {**run.meta, "run_id": run.run_id, "metrics": metrics, "summaries": summaries}
+
+
+def load_score(run_id: str, metric: str) -> dict:
+    """The full cached score record (summary + per-sample) for one run+metric."""
+    path = _load_run(run_id).score_path(metric)
     if not path.is_file():
-        raise FileNotFoundError(f"no result record: {path}")
+        raise FileNotFoundError(f"run {run_id!r} has no {metric!r} score: {path}")
     return json.loads(path.read_text())
 
 
@@ -81,15 +95,13 @@ class CasePaths:
     prediction: Path | None
 
 
-def case_paths(corpus: str, engine: str, sample_id: str) -> CasePaths:
-    """Resolve the three files for one case: the source image and reference
-    (from the corpus sample dir) and the engine's prediction. Each is None when
-    absent. Reuses `corpus.Sample` for the corpus-side path logic."""
-    sample = Sample(id=sample_id, dir=Path(corpus) / sample_id)
+def case_paths(run_id: str, sample_id: str) -> CasePaths:
+    """Resolve the three files for one case: the source image and reference (from
+    the run's corpus) and the run's prediction. Each is None when absent."""
+    run = _load_run(run_id)
+    sample = Sample(id=sample_id, dir=Path(run.corpus) / sample_id)
     reference = sample.reference_musicxml
-    prediction = PREDICTIONS_DIR / engine / f"{sample_id}.musicxml"
-    # Sample.image walks the sample dir; guard the dir not existing (e.g. an
-    # unknown or path-traversing sample_id) so callers get None, not an error.
+    prediction = run.prediction(sample_id)
     image = sample.image if sample.dir.is_dir() else None
     return CasePaths(
         image=image,

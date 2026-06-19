@@ -97,79 +97,53 @@ async function viewRuns() {
   const runs = await getJSON("/api/runs");
   app.innerHTML = "";
   if (!runs.length) {
-    app.append(el("p", { class: "muted" }, "No result records yet. Run `omrbench score …` to create one."));
+    app.append(el("p", { class: "muted" }, "No runs yet. Run `omrbench run --engine … --corpus …` to create one."));
     return;
-  }
-
-  // group by engine · corpus · metric for trend charts
-  const groups = {};
-  for (const r of runs) {
-    const key = `${r.engine} · ${r.corpus} · ${r.metric}`;
-    (groups[key] ||= []).push(r);
   }
 
   const table = el("table", {},
     el("thead", {}, el("tr", {},
       el("th", {}, "Date"), el("th", {}, "Engine"), el("th", {}, "Version"),
-      el("th", {}, "Metric"), el("th", {}, "Corpus"), el("th", {}, "Tier"),
-      el("th", { class: "num" }, "Samples"), el("th", { class: "num" }, "Headline")))
+      el("th", {}, "Corpus"), el("th", {}, "Tier"),
+      el("th", { class: "num" }, "Scored"), el("th", { class: "num" }, "SER (music21)")))
   );
   const tbody = el("tbody");
   for (const r of runs) {
-    const h = headline(r.summary);
-    const tr = el("tr", { class: "clickable", onclick: () => (location.hash = `#/runs/${r.engine}/${r.run_id}`) },
+    // A run can hold several metric scores; the list previews music21 if present.
+    const s = r.summaries?.music21;
+    const h = s ? headline(s) : null;
+    const scored = s ? `${s.samples_scored ?? "?"}/${s.samples_total ?? "?"}` : "—";
+    const tr = el("tr", { class: "clickable", onclick: () => (location.hash = `#/runs/${r.run_id}`) },
       el("td", {}, shortDate(r.date)),
       el("td", {}, r.engine),
       el("td", {}, r.engine_version || "—"),
-      el("td", {}, r.metric),
       el("td", {}, r.corpus),
       el("td", {}, el("span", { class: "tier" }, r.tier || "—")),
-      el("td", { class: "num" }, `${r.summary.samples_scored ?? "?"}/${r.summary.samples_total ?? "?"}`),
-      el("td", { class: "num" }, h ? `${pct(h.value)}` : "—"));
+      el("td", { class: "num" }, scored),
+      el("td", { class: "num" }, h ? pct(h.value) : "—"));
     tbody.append(tr);
   }
   table.append(tbody);
-
   app.append(el("h2", {}, "Runs"), el("div", { class: "card" }, table));
-
-  // trend chart with a group picker
-  const groupKeys = Object.keys(groups);
-  const picker = el("select", { onchange: () => drawTrend(picker.value) });
-  groupKeys.forEach((k) => picker.append(el("option", { value: k }, k)));
-  const canvas = el("canvas");
-  const trendCard = el("div", { class: "card" },
-    el("h2", {}, "Trend over runs"), picker, el("div", { class: "chart-box" }, canvas));
-  app.append(trendCard);
-
-  function drawTrend(key) {
-    clearCharts();
-    const series = groups[key].slice().sort((a, b) => a.date.localeCompare(b.date));
-    const labels = series.map((r) => shortDate(r.date));
-    const aggKeys = [...new Set(series.flatMap((r) =>
-      Object.keys(r.summary).filter((k) => !["samples_total", "samples_scored"].includes(k))))];
-    const datasets = aggKeys.map((ak, i) => ({
-      label: ak,
-      data: series.map((r) => r.summary[ak] ?? null),
-      borderColor: `hsl(${(i * 70) % 360} 65% 45%)`,
-      tension: 0.2,
-    }));
-    newChart(canvas, {
-      type: "line",
-      data: { labels, datasets },
-      options: { maintainAspectRatio: false, scales: { y: { ticks: { callback: (v) => `${(100 * v).toFixed(0)}%` } } } },
-    });
-  }
-  drawTrend(groupKeys[0]);
 }
 
-async function viewRun(engine, runId) {
-  const rec = await getJSON(`/api/runs/${engine}/${runId}`);
-  const primary = METRICS[rec.metric]?.primary;
+async function viewRun(runId) {
+  const meta = await getJSON(`/api/runs/${runId}`);
   app.innerHTML = "";
 
   app.append(el("div", { class: "breadcrumb" },
     el("a", { onclick: () => (location.hash = "#/runs") }, "Runs"),
-    ` ${rec.engine} @ ${shortDate(rec.date)}`));
+    ` ${meta.engine} @ ${shortDate(meta.date)}`));
+
+  const metrics = meta.metrics || [];
+  if (!metrics.length) {
+    app.append(el("div", { class: "card" }, el("p", { class: "muted" },
+      `Not scored yet — run `, el("code", {}, `omrbench score ${runId}`), ` to score this run.`)));
+    return;
+  }
+  const metric = metrics.includes("music21") ? "music21" : metrics[0];
+  const primary = METRICS[metric]?.primary;
+  const rec = await getJSON(`/api/runs/${runId}/scores/${metric}`);
 
   // summary stats
   const stats = el("div", { class: "summary-list" });
@@ -178,8 +152,8 @@ async function viewRun(engine, runId) {
     stats.append(el("div", {}, el("div", { class: "k" }, k), el("div", { class: "v" }, isPct ? pct(v) : String(v))));
   }
   app.append(el("div", { class: "card" },
-    el("h2", {}, `${rec.metric} · ${rec.corpus}`), stats,
-    el("p", { class: "muted" }, `engine version: ${rec.engine_version || "—"}`)));
+    el("h2", {}, `${metric} · ${meta.corpus}`), stats,
+    el("p", { class: "muted" }, `engine version: ${meta.engine_version || "—"}`)));
 
   const scored = rec.samples.filter((s) => s.ok && primary in s);
 
@@ -210,7 +184,7 @@ async function viewRun(engine, runId) {
       ...fieldKeys.map((k) => el("th", { class: "num" }, k)))));
   const tbody = el("tbody");
   for (const s of worst) {
-    const tr = el("tr", { class: "clickable", onclick: () => (location.hash = `#/case/${engine}/${runId}/${s.id}`) },
+    const tr = el("tr", { class: "clickable", onclick: () => (location.hash = `#/case/${runId}/${s.id}`) },
       el("td", {}, s.id),
       ...fieldKeys.map((k) => {
         const isPct = k === primary || k.endsWith("_ser") || k.endsWith("omr_ned");
@@ -224,26 +198,31 @@ async function viewRun(engine, runId) {
     el("div", { class: "card" }, table));
 }
 
-async function viewCase(engine, runId, sampleId) {
-  const rec = await getJSON(`/api/runs/${engine}/${runId}`);
-  const sample = rec.samples.find((s) => s.id === sampleId);
-  const corpus = encodeURIComponent(rec.corpus);
-  const q = `corpus=${corpus}&engine=${encodeURIComponent(engine)}&sample_id=${encodeURIComponent(sampleId)}`;
+async function viewCase(runId, sampleId) {
+  const meta = await getJSON(`/api/runs/${runId}`);
+  const q = `run_id=${encodeURIComponent(runId)}&sample_id=${encodeURIComponent(sampleId)}`;
   app.innerHTML = "";
 
   app.append(el("div", { class: "breadcrumb" },
     el("a", { onclick: () => (location.hash = "#/runs") }, "Runs"),
-    el("a", { onclick: () => (location.hash = `#/runs/${engine}/${runId}`) }, `${rec.engine} @ ${shortDate(rec.date)}`),
+    el("a", { onclick: () => (location.hash = `#/runs/${runId}`) }, `${meta.engine} @ ${shortDate(meta.date)}`),
     ` sample ${sampleId}`));
 
-  if (sample) {
-    const stats = el("div", { class: "summary-list" });
-    for (const [k, v] of Object.entries(sample)) {
-      if (k === "id" || k === "ok") continue;
-      const isPct = k.endsWith("_ser") || k.endsWith("omr_ned");
-      stats.append(el("div", {}, el("div", { class: "k" }, k), el("div", { class: "v" }, isPct ? pct(v) : String(v))));
+  // per-sample numbers, from a cached score record if there is one
+  const metrics = meta.metrics || [];
+  if (metrics.length) {
+    const metric = metrics.includes("music21") ? "music21" : metrics[0];
+    const rec = await getJSON(`/api/runs/${runId}/scores/${metric}`);
+    const sample = rec.samples.find((s) => s.id === sampleId);
+    if (sample) {
+      const stats = el("div", { class: "summary-list" });
+      for (const [k, v] of Object.entries(sample)) {
+        if (k === "id" || k === "ok") continue;
+        const isPct = k.endsWith("_ser") || k.endsWith("omr_ned");
+        stats.append(el("div", {}, el("div", { class: "k" }, k), el("div", { class: "v" }, isPct ? pct(v) : String(v))));
+      }
+      app.append(el("div", { class: "card" }, stats));
     }
-    app.append(el("div", { class: "card" }, stats));
   }
 
   const panelHead = (title, side) =>
@@ -303,8 +282,8 @@ async function route() {
   app.innerHTML = '<p class="muted">Loading…</p>';
   try {
     if (parts[0] === "metrics") await viewMetrics();
-    else if (parts[0] === "case") await viewCase(parts[1], parts[2], parts[3]);
-    else if (parts[0] === "runs" && parts[1]) await viewRun(parts[1], parts[2]);
+    else if (parts[0] === "case") await viewCase(parts[1], parts[2]);
+    else if (parts[0] === "runs" && parts[1]) await viewRun(parts[1]);
     else await viewRuns();
   } catch (e) {
     app.innerHTML = "";

@@ -40,10 +40,13 @@ corpus/                                  # ground truth (unchanged)
 
 runs/                                    # NEW — replaces predictions/ and results/
   <run-id>/                              # e.g. homr-20260614T211232Z
-    run.json                             # engine, command, version, corpus, sample selection, date
+    run.json                             # engine, command, version, corpus, date (+ samples only on a subset run)
     predictions/<id>.musicxml            # the engine output (precious, committed)
     scores/<metric>.json                 # cached score, written on demand by the server
 ```
+
+`run.json`'s `samples` field is present **only on a subset run** (listing the
+covered sample ids); a full-corpus run omits it, so absence means "whole corpus".
 
 The old layout maps in cleanly:
 

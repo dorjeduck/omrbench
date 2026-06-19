@@ -61,6 +61,32 @@ class Report:
         key = self.metric.primary
         return sorted(self.scored, key=lambda s: s.fields.get(key, 0.0), reverse=True)[:n]
 
+    def _summary_dict(self) -> dict:
+        return {
+            "samples_total": len(self.samples),
+            "samples_scored": len(self.scored),
+            **{k: round(v, 6) for k, v in self.summary.items()},
+            **{k: round(v, 6) for k, v in self.distribution.items()},
+        }
+
+    def _samples_list(self) -> list[dict]:
+        return [
+            {"id": s.sample_id, "ok": s.ok, **{k: round(v, 6) for k, v in s.fields.items()}}
+            for s in self.samples
+        ]
+
+    def to_score_record(self) -> dict:
+        """The cached score for one run+metric (`runs/<run-id>/scores/<metric>.json`).
+        Carries only what is metric-specific — aggregates + every per-sample
+        result; the run-level metadata (engine, corpus, date) lives in `run.json`,
+        not here."""
+        return {
+            "schema_version": RECORD_SCHEMA_VERSION,
+            "metric": self.metric.name,
+            "summary": self._summary_dict(),
+            "samples": self._samples_list(),
+        }
+
     def to_record(
         self,
         engine: str,
@@ -79,20 +105,8 @@ class Report:
             "corpus": self.corpus,
             "tier": tier,
             "date": date,
-            "summary": {
-                "samples_total": len(self.samples),
-                "samples_scored": len(self.scored),
-                **{k: round(v, 6) for k, v in self.summary.items()},
-                **{k: round(v, 6) for k, v in self.distribution.items()},
-            },
-            "samples": [
-                {
-                    "id": s.sample_id,
-                    "ok": s.ok,
-                    **{k: round(v, 6) for k, v in s.fields.items()},
-                }
-                for s in self.samples
-            ],
+            "summary": self._summary_dict(),
+            "samples": self._samples_list(),
         }
 
     def render(self) -> str:
