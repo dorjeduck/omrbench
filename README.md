@@ -58,11 +58,12 @@ pip install -e '.[augment]' # + corpus image degradation (omrbench augment)
 omrbench fetch polish-scores               # Tier 2 -> corpus/tier2_real/polish_scores/
 omrbench fetch grandstaff --limit 200      # Tier 1 -> corpus/tier1_synthetic/grandstaff/
 
-# 2. run an engine declared in omrbench.toml (see "Engines" below)
+# 2. run an engine declared in omrbench.toml (see "Engines" below) -> a new run
 omrbench run --engine homr --corpus corpus/tier2_real/polish_scores
+#   prints the run id, e.g.  homr-20260614T210837Z
 
-# 3. score the predictions against the ground truth
-omrbench score --engine homr --corpus corpus/tier2_real/polish_scores
+# 3. score that run (engine + corpus come from the run; no need to restate them)
+omrbench score homr-20260614T210837Z
 ```
 
 To probe robustness, write a degraded copy of a Tier-1 corpus and run against it
@@ -79,8 +80,10 @@ images); references are copied unchanged and the applied degradations are
 recorded in each sample's `meta.yaml`. It degrades, it does not upscale — it will
 not make a low-DPI corpus easier for a resolution-sensitive engine.
 
-Prediction and result paths are derived from the engine name
-(`predictions/<engine>/`, `results/<engine>/`) — nothing to set by hand.
+A *run* is the unit: `run` writes everything under `runs/<run-id>/` (run-id is
+`<engine>-<timestamp>`) — the predictions, a `run.json` recording the engine and
+corpus, and any cached `scores/<metric>.json`. So `score` only needs the run id;
+with no id it scores every run missing that metric's score. See **DESIGN.md**.
 
 ### Web UI
 
@@ -114,7 +117,7 @@ cwd     = "/path/to/homr-v0.6"   # optional: required when cmd must run from a d
 
 ```bash
 omrbench run   --engine homr-0_6 --corpus corpus/tier2_real/polish_scores
-omrbench score --engine homr-0_6 --corpus corpus/tier2_real/polish_scores
+omrbench score <run-id>        # the run id that `run` printed
 ```
 
 `grandstaff` is an engraved (synthetic) dataset of tens of thousands of

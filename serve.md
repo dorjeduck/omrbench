@@ -4,8 +4,8 @@ A lightweight **local** web interface for browsing benchmark results, inspecting
 individual cases against the ground truth, and reading what each metric measures.
 
 It is **read-only**: it shows what `omrbench run` / `omrbench score` have already
-produced (the JSON records under `results/` and the predictions under
-`predictions/`). It runs no benchmark and imports no OMR engine — the same
+produced under `runs/<run-id>/` (the predictions, `run.json`, and the cached
+`scores/<metric>.json`). It runs no benchmark and imports no OMR engine — the same
 discipline as the rest of omrbench. Notation is rendered in the browser by
 [Verovio](https://www.verovio.org) (WebAssembly), so no extra Python dependency
 is needed for it.
@@ -17,8 +17,8 @@ pip install -e '.[serve]'     # adds fastapi + uvicorn
 omrbench serve                # -> http://127.0.0.1:8000
 ```
 
-Run it from the project root — result and prediction paths are resolved relative
-to the working directory. Options:
+Run it from the project root — the `runs/` directory is resolved relative to the
+working directory. Options:
 
 ```bash
 omrbench serve --port 8077 --host 0.0.0.0
@@ -29,11 +29,8 @@ Open the printed URL in a browser. Stop with `Ctrl-C`.
 ## What you can do
 
 **Runs** (landing page)
-A table of every result record (`results/<engine>/*.json`): date, engine,
-version, metric, corpus, tier, samples scored, and the headline (size-weighted)
-aggregate. Below it, a **trend chart** of a metric's aggregates over time — pick
-an `engine · corpus · metric` group from the dropdown. Click a row to open the
-run.
+A table of every run under `runs/`: date, engine, version, corpus, tier, samples
+scored, and the headline (size-weighted) SER. Click a row to open the run.
 
 **Run detail**
 The run's summary numbers, a **histogram** of the per-sample primary field

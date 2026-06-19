@@ -21,10 +21,17 @@ engine, it is wrong.
 
 ```
 corpus.py    sample discovery (id/ -> image + reference.musicxml + meta.yaml)
+runs.py      the run as the on-disk unit: runs/<run-id>/ (run.json, predictions/, scores/)
 adapters/    "images -> MusicXML" subprocess wrappers, one file per engine
 score/       MusicXML-vs-MusicXML metric; imports no engine
-cli.py       omrbench fetch | run | score
+records.py   engine-free read layer over runs/ (used by the server)
+cli.py       omrbench fetch | run | score | augment | serve
 ```
+
+A **run** is the unit (see `DESIGN.md`): `run` produces `runs/<engine>-<timestamp>/`
+with the predictions and a `run.json` recording engine + corpus; scoring is
+engine-free and cached under `runs/<run-id>/scores/<metric>.json`, so `score`
+needs only a run id. (`predictions/` and `results/` are the retired old layout.)
 
 ## Corpus discipline
 
@@ -74,16 +81,18 @@ pip install -e '.[fetch]'   # + dataset download (datasets, huggingface_hub)
 pip install -e '.[omr-ned]' # + the omr-ned metric (musicdiff)
 
 omrbench fetch polish-scores
-omrbench run   --engine homr --corpus corpus/tier2_real/polish_scores
-omrbench score --engine homr --corpus corpus/tier2_real/polish_scores
-omrbench score --engine homr --corpus corpus/tier2_real/polish_scores --metric omr-ned
+omrbench run   --engine homr --corpus corpus/tier2_real/polish_scores  # -> a run id
+omrbench score <run-id>                       # engine + corpus come from run.json
+omrbench score <run-id> --metric omr-ned
+omrbench score                                # score every run missing that metric
 ```
 
-`--engine` names an entry in `omrbench.toml` (see `omrbench.toml.example`);
-prediction/result paths derive from it (`predictions/<engine>/`,
-`results/<engine>/`). Multiple versions of one tool are just multiple entries.
+`--engine` (on `run`) names an entry in `omrbench.toml` (see
+`omrbench.toml.example`); the run lands in `runs/<engine>-<timestamp>/`. Multiple
+versions of one tool are just multiple entries.
 
-`run` caches: a non-empty output file is not re-run; delete it to force a re-run.
+`run` caches: a non-empty prediction file is not re-run; delete it to force a
+re-run.
 
 ## Testing the homr adapter against the local checkout
 
