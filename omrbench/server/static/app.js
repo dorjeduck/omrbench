@@ -135,15 +135,20 @@ async function viewRun(runId) {
     el("a", { onclick: () => (location.hash = "#/runs") }, "Runs"),
     ` ${meta.engine} @ ${shortDate(meta.date)}`));
 
-  const metrics = meta.metrics || [];
-  if (!metrics.length) {
-    app.append(el("div", { class: "card" }, el("p", { class: "muted" },
-      `Not scored yet — run `, el("code", {}, `omrbench score ${runId}`), ` to score this run.`)));
+  // Scores are computed on demand by the server and cached; the first view of a
+  // run can take a moment, so show a placeholder while it scores.
+  const metric = "music21";
+  const primary = METRICS[metric]?.primary;
+  const pending = el("div", { class: "card" }, el("p", { class: "muted" }, "scoring…"));
+  app.append(pending);
+  let rec;
+  try {
+    rec = await getJSON(`/api/runs/${runId}/scores/${metric}`);
+  } catch (e) {
+    pending.replaceWith(el("div", { class: "card" }, el("p", { class: "err" }, `could not score: ${e.message}`)));
     return;
   }
-  const metric = metrics.includes("music21") ? "music21" : metrics[0];
-  const primary = METRICS[metric]?.primary;
-  const rec = await getJSON(`/api/runs/${runId}/scores/${metric}`);
+  pending.remove();
 
   // summary stats
   const stats = el("div", { class: "summary-list" });
@@ -208,11 +213,12 @@ async function viewCase(runId, sampleId) {
     el("a", { onclick: () => (location.hash = `#/runs/${runId}`) }, `${meta.engine} @ ${shortDate(meta.date)}`),
     ` sample ${sampleId}`));
 
-  // per-sample numbers, from a cached score record if there is one
-  const metrics = meta.metrics || [];
-  if (metrics.length) {
-    const metric = metrics.includes("music21") ? "music21" : metrics[0];
-    const rec = await getJSON(`/api/runs/${runId}/scores/${metric}`);
+  // per-sample numbers, from the run's score (computed on demand by the server)
+  let rec = null;
+  try {
+    rec = await getJSON(`/api/runs/${runId}/scores/music21`);
+  } catch (_) { /* unscored / unscorable: still show the files below */ }
+  if (rec) {
     const sample = rec.samples.find((s) => s.id === sampleId);
     if (sample) {
       const stats = el("div", { class: "summary-list" });

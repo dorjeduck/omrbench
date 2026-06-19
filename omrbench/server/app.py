@@ -41,10 +41,13 @@ def create_app() -> FastAPI:
 
     @app.get("/api/runs/{run_id}/scores/{metric}")
     def score(run_id: str, metric: str) -> dict:
+        # Computed and cached on first request (on-demand scoring) — engine-free.
         try:
-            return records.load_score(run_id, metric)
+            return records.ensure_score(run_id, metric)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"unknown metric: {metric}") from exc
 
     @app.get("/api/metrics")
     def metrics() -> list[dict]:

@@ -13,7 +13,6 @@ scores every run missing that metric's score (precompute for CI / the web UI).
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -70,27 +69,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _score_run(run, metric):
-    """Score one run's predictions against its corpus, returning a Report.
-    Imports no engine. Honours a subset run's `samples` selection."""
-    from omrbench.corpus import discover
-    from omrbench.score.report import Report
-
-    samples = discover(Path(run.corpus))
-    if run.samples is not None:
-        selection = set(run.samples)
-        samples = [s for s in samples if s.id in selection]
-    report = Report(metric=metric, corpus=run.corpus)
-    for sample in samples:
-        reference = sample.reference_musicxml
-        if not reference.exists():
-            continue
-        report.samples.append(metric.score(run.prediction(sample.id), reference, sample.id))
-    return report
-
-
 def _cmd_score(args: argparse.Namespace) -> int:
-    from omrbench import runs
+    from omrbench import runs, scoring
     from omrbench.score import get_metric
 
     metric = get_metric(args.metric)
@@ -107,17 +87,15 @@ def _cmd_score(args: argparse.Namespace) -> int:
             return 2
 
     for run in targets:
-        score_path = run.score_path(metric.name)
         # Zero-arg precompute skips runs already scored for this metric; an
         # explicit run id always re-scores.
-        if not args.run and score_path.exists():
+        if not args.run and run.score_path(metric.name).exists():
             continue
-        report = _score_run(run, metric)
-        score_path.parent.mkdir(parents=True, exist_ok=True)
-        score_path.write_text(json.dumps(report.to_score_record(), indent=2))
+        report = scoring.score_run(run, metric)
+        scoring.write_score(run, report)
         if args.run:
             print(report.render())
-        print(f"{run.run_id}: {metric.name} -> {score_path}")
+        print(f"{run.run_id}: {metric.name} -> {run.score_path(metric.name)}")
     return 0
 
 

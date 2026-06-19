@@ -80,12 +80,15 @@ def load_run(run_id: str) -> dict:
     return {**run.meta, "run_id": run.run_id, "metrics": metrics, "summaries": summaries}
 
 
-def load_score(run_id: str, metric: str) -> dict:
-    """The full cached score record (summary + per-sample) for one run+metric."""
-    path = _load_run(run_id).score_path(metric)
-    if not path.is_file():
-        raise FileNotFoundError(f"run {run_id!r} has no {metric!r} score: {path}")
-    return json.loads(path.read_text())
+def ensure_score(run_id: str, metric: str) -> dict:
+    """The full score record (summary + per-sample) for one run+metric, computed
+    and cached on first request. Engine-free; the scoring deps are imported lazily
+    so the read layer stays light. Raises KeyError for an unknown metric."""
+    from omrbench import scoring
+    from omrbench.score import get_metric
+
+    run = _load_run(run_id)
+    return scoring.ensure_score(run, get_metric(metric))
 
 
 @dataclass
