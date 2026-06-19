@@ -13,6 +13,18 @@ from omrbench.score.base import Metric, SampleResult, default_format
 RECORD_SCHEMA_VERSION = 1
 
 
+def _percentile(values_sorted: list[float], q: float) -> float:
+    """Linear-interpolated percentile of a pre-sorted list (``q`` in [0, 1])."""
+    if not values_sorted:
+        return 0.0
+    if len(values_sorted) == 1:
+        return values_sorted[0]
+    pos = q * (len(values_sorted) - 1)
+    lo = int(pos)
+    hi = min(lo + 1, len(values_sorted) - 1)
+    return values_sorted[lo] + (values_sorted[hi] - values_sorted[lo]) * (pos - lo)
+
+
 @dataclass
 class Report:
     metric: Metric
@@ -26,6 +38,24 @@ class Report:
     @property
     def summary(self) -> dict[str, float]:
         return self.metric.aggregate(self.scored)
+
+    @property
+    def distribution(self) -> dict[str, float]:
+        """Spread of the primary field across scored samples. Since lower is
+        better, the high tail (p90/p95/max) is where the failures live; iqr is
+        the middle spread. Computed generically over any metric's `primary`, and
+        keyed `<stat>_<primary>` to match the metric's own aggregate keys (so the
+        report and web UI format and trend them the same way)."""
+        primary = self.metric.primary
+        values = sorted(s.fields.get(primary, 0.0) for s in self.scored)
+        if not values:
+            return {}
+        return {
+            f"p90_{primary}": _percentile(values, 0.90),
+            f"p95_{primary}": _percentile(values, 0.95),
+            f"max_{primary}": values[-1],
+            f"iqr_{primary}": _percentile(values, 0.75) - _percentile(values, 0.25),
+        }
 
     def _worst(self, n: int = 10) -> list[SampleResult]:
         key = self.metric.primary
@@ -53,6 +83,7 @@ class Report:
                 "samples_total": len(self.samples),
                 "samples_scored": len(self.scored),
                 **{k: round(v, 6) for k, v in self.summary.items()},
+                **{k: round(v, 6) for k, v in self.distribution.items()},
             },
             "samples": [
                 {
@@ -73,8 +104,13 @@ class Report:
         ]
         for key, value in self.summary.items():
             lines.append(f"{key}: {fmt(key, value)}")
-        lines += ["", "worst samples:"]
         primary = self.metric.primary
+        dist = self.distribution
+        if dist:
+            # values are of the primary field, so format them in its unit
+            spread = "  ".join(f"{k} {fmt(primary, v)}" for k, v in dist.items())
+            lines.append(f"spread : {spread}")
+        lines += ["", "worst samples:"]
         for s in self._worst():
             head = f"{primary} {fmt(primary, s.fields.get(primary, 0.0))}"
             detail = "  ".join(
