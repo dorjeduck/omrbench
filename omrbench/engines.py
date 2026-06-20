@@ -44,7 +44,12 @@ def load_engine(name: str, config: Path | None = None) -> Adapter:
         raise KeyError(f"unknown engine {name!r}; declared engines: {known}")
 
     entry = engines[name]
-    adapter_type = entry.get("adapter")
+    engine_identity = entry.get("engine")
+    if not engine_identity:
+        raise KeyError(f"engine {name!r} is missing required 'engine' (the tool name)")
+    # The adapter (driver code) defaults to the tool name; override only when the
+    # driver differs from the tool.
+    adapter_type = entry.get("adapter", engine_identity)
     if adapter_type not in REGISTRY:
         known = ", ".join(sorted(REGISTRY))
         raise KeyError(
@@ -53,4 +58,10 @@ def load_engine(name: str, config: Path | None = None) -> Adapter:
     if "cmd" not in entry:
         raise KeyError(f"engine {name!r} is missing required 'cmd'")
 
-    return REGISTRY[adapter_type](name=name, cmd=entry["cmd"], cwd=entry.get("cwd"))
+    return REGISTRY[adapter_type](
+        name=name,
+        cmd=entry["cmd"],
+        cwd=entry.get("cwd"),
+        engine=engine_identity,
+        declared_version=entry.get("version"),
+    )

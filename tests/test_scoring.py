@@ -18,7 +18,7 @@ def _make_run(tmp_path, sample_ids=("0000",), meta_extra=None):
     for sid in sample_ids:
         (corpus / sid).mkdir(parents=True)
         write_musicxml(corpus / sid / "reference.musicxml", PARTS)
-    run_dir = runs.create_run_dir("homr", WHEN, runs_dir=runs_dir)
+    run_dir = runs.create_run_dir("homr", "0.6.1", WHEN, runs_dir=runs_dir)
     for sid in sample_ids:
         write_musicxml(run_dir / "predictions" / f"{sid}.musicxml", PARTS)  # identical -> ser 0
     runs.write_run_meta(run_dir, {"engine": "homr", "corpus": str(corpus), "date": "d", **(meta_extra or {})})

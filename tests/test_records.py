@@ -8,7 +8,7 @@ from omrbench import records, runs
 
 
 def _make_run(engine, when, corpus, ids):
-    run_dir = runs.create_run_dir(engine, when)  # default runs_dir = ./runs (cwd)
+    run_dir = runs.create_run_dir(engine, "1.0", when)  # default runs_dir = ./runs (cwd)
     for sid in ids:
         (run_dir / "predictions" / f"{sid}.musicxml").write_text("<x/>")
     runs.write_run_meta(run_dir, {"engine": engine, "corpus": corpus, "date": when.isoformat()})

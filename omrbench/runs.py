@@ -13,11 +13,17 @@ See DESIGN.md for the rationale (the run replaces the old per-engine
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 RUNS_DIR = Path("runs")
+
+
+def _safe(part: str) -> str:
+    """Make a string safe for a run-id / directory name."""
+    return re.sub(r"[^A-Za-z0-9._]+", "-", part).strip("-")
 
 
 @dataclass
@@ -72,16 +78,19 @@ class Run:
         return self.scores_dir / f"{metric}.json"
 
 
-def make_run_id(engine: str, when: datetime) -> str:
-    """``<engine>-<timestamp>``, e.g. ``homr-20260619T083012Z``."""
-    return f"{engine}-{when.strftime('%Y%m%dT%H%M%SZ')}"
+def make_run_id(engine: str, version: str, when: datetime) -> str:
+    """``<engine>-<version>-<timestamp>``, e.g. ``homr-0.6.1-20260619T083012Z``.
+    The version is sanitized for the filename."""
+    return f"{_safe(engine)}-{_safe(version)}-{when.strftime('%Y%m%dT%H%M%SZ')}"
 
 
-def create_run_dir(engine: str, when: datetime, runs_dir: Path = RUNS_DIR) -> Path:
+def create_run_dir(
+    engine: str, version: str, when: datetime, runs_dir: Path = RUNS_DIR
+) -> Path:
     """Create and return a fresh ``runs/<run-id>/`` (with its ``predictions/``).
     On a same-second collision, append a short suffix (``-b``, ``-c``, …)."""
     runs_dir = Path(runs_dir)
-    base = make_run_id(engine, when)
+    base = make_run_id(engine, version, when)
     run_id = base
     suffix = ord("b")
     while (runs_dir / run_id).exists():

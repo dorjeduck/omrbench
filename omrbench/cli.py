@@ -48,24 +48,42 @@ def _cmd_run(args: argparse.Namespace) -> int:
     except (FileNotFoundError, KeyError) as exc:
         print(str(exc).strip("'\""), file=sys.stderr)
         return 2
+    version = engine.resolved_version()
+    if not version:
+        print(
+            f"could not determine the version for engine {args.engine!r}; "
+            "declare 'version' in omrbench.toml",
+            file=sys.stderr,
+        )
+        return 2
     samples = discover(Path(args.corpus))
     when = datetime.now(timezone.utc)
-    run_dir = runs.create_run_dir(args.engine, when)
+    run_dir = runs.create_run_dir(engine.engine, version, when)
     results = engine.run_corpus(samples, run_dir / "predictions")
     ok = sum(1 for v in results.values() if v)
-    # Capture the engine version/command now, while the engine is present, so the
-    # engine-free read/score path can use them later from run.json.
+    # Record the tool identity and version (so runs group by engine and the version
+    # names/distinguishes them) for the engine-free read/score path.
     runs.write_run_meta(
         run_dir,
         {
-            "engine": args.engine,
-            "engine_version": engine.version(),
+            "engine": engine.engine,
+            "engine_version": version,
             "command": " ".join(engine.cmd),
             "corpus": str(args.corpus),
             "date": when.isoformat(),
         },
     )
     print(f"{run_dir.name}: {ok}/{len(results)} samples produced -> {run_dir}")
+
+    # Auto-score the cheap default metric so the run shows a number immediately;
+    # the heavy omr-ned stays opt-in (score it explicitly).
+    from omrbench import scoring
+    from omrbench.score import get_metric
+
+    run = runs.load_run(run_dir.name)
+    metric = get_metric("music21")
+    scoring.write_score(run, scoring.score_run(run, metric))
+    print(f"{run_dir.name}: scored {metric.name}")
     return 0
 
 

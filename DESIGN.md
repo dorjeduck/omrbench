@@ -39,8 +39,8 @@ corpus/                                  # ground truth (unchanged)
   tier2_real/polish_scores/<id>/{image.*, reference.musicxml, meta.yaml}
 
 runs/                                    # NEW — replaces predictions/ and results/
-  <run-id>/                              # e.g. homr-20260614T211232Z
-    run.json                             # engine, command, version, corpus, date (+ samples only on a subset run)
+  <run-id>/                              # e.g. homr-0.6.1-20260614T211232Z
+    run.json                             # engine, version, command, corpus, date (+ samples only on a subset run)
     predictions/<id>.musicxml            # the engine output (precious, committed)
     scores/<metric>.json                 # cached score, written on demand by the server
 ```
@@ -54,19 +54,50 @@ The old layout maps in cleanly:
 - `results/<engine>/<ts>.json`   -> `runs/<run-id>/scores/<metric>.json`
   (no longer hand-written by the CLI)
 
-**run-id = `<engine>-<timestamp>`**, e.g. `homr-20260619T083012Z`. Rationale:
+**run-id = `<engine>-<version>-<timestamp>`**, e.g. `homr-0.6.1-20260619T083012Z`.
+Rationale:
 
-- engine in the id makes `runs/` self-explanatory on disk (you see whose run it
-  is without opening `run.json`);
-- the timestamp makes it unique, chronologically sortable, and naturally
-  separates repeats and subset runs;
-- corpus stays out of the id — it is already in `run.json` and shown as a list
-  column, and corpus paths make ugly directory names.
+- `engine` (the tool, e.g. `homr`) groups a tool's runs into one lineage;
+- `version` distinguishes versions of the same tool *in the name itself* — the
+  point of the engine/version model below;
+- the timestamp makes it unique, chronologically sortable, and separates repeats;
+- corpus stays out of the id — it is in `run.json` and shown as a list column, and
+  corpus paths make ugly directory names.
 
-Two runs in the same second collide; if the dir already exists, append a short
-suffix (e.g. `-b`). Considered and rejected: pure timestamp (opaque on disk),
-engine+corpus+timestamp (long, redundant with `run.json`), opaque hash
-(meaningless to a human).
+Same-second collisions get a short suffix (`-b`). The version is sanitized for the
+filename (e.g. a verbose `git describe` like `v0.6.2-54-g83074e1` is kept, just
+made path-safe). Considered and rejected: pure timestamp (opaque on disk),
+engine+corpus+timestamp (long, redundant with `run.json`), opaque hash.
+
+## Engine identity, version, adapter
+
+omrbench compares **engines** (tools, e.g. `homr`), and a tool evolves through
+**versions** (`v0.6.1`, `v0.6.2`). Keeping these distinct is what enables the
+lineage features (see the UI section): grouping a tool's runs, ordering them, and
+framing a comparison as *regression* (same engine, two versions) vs *competition*
+(two engines). So `run.json` records the **engine** (the tool — same string across
+versions) and the **version** as separate fields.
+
+A toml entry declares one runnable instance:
+
+```toml
+[engines.homr-0_6_1]       # entry name: a unique config key
+engine  = "homr"           # required: the tool — the identity grouped on, and the
+                           #   default adapter to load
+version = "0.6.1"          # the version. Declared here; if omitted, fall back to
+                           #   the adapter's auto-detect (e.g. git describe); if
+                           #   neither yields one, `run` errors (can't name the run)
+cmd     = "poetry run homr"
+cwd     = "/path/to/homr-v0.6.1"
+# adapter = "..."          # optional: the driver code (class in adapters/). Defaults
+                           #   to `engine`; set only when the driver name differs
+                           #   from the tool (e.g. a generic/shared adapter)
+```
+
+The user declares the **engine** (the tool they care about); **adapter** is
+internal plumbing and only surfaces in config as an escape hatch. **version** is
+crucial (it names and distinguishes the run), so it is required to end up known —
+declared, else auto-detected.
 
 ## Scoring: on demand, cached
 

@@ -18,12 +18,23 @@ from omrbench.corpus import Sample
 
 
 class Adapter(ABC):
-    #: engine-instance name (the ``--engine`` value); drives prediction/result
-    #: paths. Set from the ``omrbench.toml`` entry, not hard-coded.
+    #: the toml entry name (the ``--engine`` value); a unique config key.
     name: str
+    #: the tool identity (the ``engine`` field), shared across versions; what runs
+    #: are grouped on. Defaults to ``name`` if not given.
+    engine: str
 
-    def __init__(self, name: str, cmd: str | list[str], cwd: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        cmd: str | list[str],
+        cwd: str | Path | None = None,
+        engine: str | None = None,
+        declared_version: str | None = None,
+    ) -> None:
         self.name = name
+        self.engine = engine or name
+        self.declared_version = declared_version
         self.cmd = shlex.split(cmd) if isinstance(cmd, str) else list(cmd)
         self.cwd = Path(cwd) if cwd else None
 
@@ -37,9 +48,14 @@ class Adapter(ABC):
         """
 
     def version(self) -> str | None:
-        """Best-effort engine version string for run metadata, or None if
+        """Best-effort *auto-detected* version (e.g. git describe), or None if
         unknown. Must not import the engine — shell out, like ``predict``."""
         return None
+
+    def resolved_version(self) -> str | None:
+        """The version to record: the declared one if given, else auto-detected.
+        None when neither is available (the CLI treats that as an error)."""
+        return self.declared_version or self.version()
 
     def run_corpus(self, samples: list[Sample], out_dir: Path) -> dict[str, bool]:
         out_dir.mkdir(parents=True, exist_ok=True)
