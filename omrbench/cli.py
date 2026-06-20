@@ -86,12 +86,16 @@ def _cmd_score(args: argparse.Namespace) -> int:
             print("no runs found under runs/", file=sys.stderr)
             return 2
 
+    def progress(run_id: str, done: int, total: int) -> None:
+        end = "\n" if done == total else ""
+        print(f"\rscoring {run_id} {done}/{total}", end=end, file=sys.stderr, flush=True)
+
     for run in targets:
         # Zero-arg precompute skips runs already scored for this metric; an
         # explicit run id always re-scores.
         if not args.run and run.score_path(metric.name).exists():
             continue
-        report = scoring.score_run(run, metric)
+        report = scoring.score_run(run, metric, on_progress=lambda d, t, rid=run.run_id: progress(rid, d, t))
         scoring.write_score(run, report)
         if args.run:
             print(report.render())

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Callable
 
 from omrbench.corpus import discover
 from omrbench.runs import Run
@@ -17,19 +18,26 @@ from omrbench.score.base import Metric
 from omrbench.score.report import Report
 
 
-def score_run(run: Run, metric: Metric) -> Report:
+def score_run(
+    run: Run,
+    metric: Metric,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> Report:
     """Score one run's predictions against its corpus. Honours a subset run's
-    `samples` selection. Imports no engine."""
+    `samples` selection. Imports no engine. ``on_progress(done, total)`` is called
+    after each sample (the CLI uses it for a counter; the server passes None)."""
     samples = discover(Path(run.corpus))
     if run.samples is not None:
         selection = set(run.samples)
         samples = [s for s in samples if s.id in selection]
+    total = len(samples)
     report = Report(metric=metric, corpus=run.corpus)
-    for sample in samples:
+    for done, sample in enumerate(samples, 1):
         reference = sample.reference_musicxml
-        if not reference.exists():
-            continue
-        report.samples.append(metric.score(run.prediction(sample.id), reference, sample.id))
+        if reference.exists():
+            report.samples.append(metric.score(run.prediction(sample.id), reference, sample.id))
+        if on_progress is not None:
+            on_progress(done, total)
     return report
 
 
