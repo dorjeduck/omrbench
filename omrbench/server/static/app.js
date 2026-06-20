@@ -183,7 +183,17 @@ async function viewRun(runId, wantMetric) {
   const sel = el("select", { onchange: (e) => { currentMetric = e.target.value; renderScore(e.target.value); } });
   metrics.forEach((m) => sel.append(el("option", { value: m }, m)));
   sel.value = metric;
-  app.append(el("div", { class: "filters" }, el("label", {}, "Metric ", sel)));
+
+  // Compare with: only runs on the same corpus sharing >=1 sample (server-filtered).
+  const cmp = el("select", {
+    onchange: (e) => { if (e.target.value) location.hash = `#/compare/${runId}/${e.target.value}/${metric}`; },
+  }, el("option", { value: "" }, "none"));
+  const comparable = await getJSON(`/api/runs/${runId}/comparable`);
+  comparable.forEach((r) => cmp.append(el("option", { value: r.run_id }, `${r.engine} @ ${shortDate(r.date)}`)));
+
+  app.append(el("div", { class: "filters" },
+    el("label", {}, "Metric ", sel),
+    el("label", {}, "Compare with ", cmp)));
 
   const content = el("div", {});
   app.append(content);
@@ -312,6 +322,102 @@ async function viewCase(runId, sampleId) {
   renderNotation(predBox, `/api/file/musicxml?${q}&side=prediction`);
 }
 
+async function viewCompare(runA, runB, wantMetric) {
+  const [ma, mb] = await Promise.all([getJSON(`/api/runs/${runA}`), getJSON(`/api/runs/${runB}`)]);
+  app.innerHTML = "";
+  const labelA = `${ma.engine} @ ${shortDate(ma.date)}`;
+  const labelB = `${mb.engine} @ ${shortDate(mb.date)}`;
+  app.append(el("div", { class: "breadcrumb" },
+    el("a", { onclick: () => (location.hash = `#/runs/${runA}`) }, "Runs"),
+    ` ${labelA}  vs  ${labelB}`));
+
+  const common = (ma.metrics || []).filter((m) => (mb.metrics || []).includes(m));
+  if (!common.length) {
+    app.append(el("div", { class: "card" }, el("p", { class: "muted" }, "no metric scored on both runs")));
+    return;
+  }
+  let metric = common.includes(wantMetric) ? wantMetric
+    : common.includes(currentMetric) ? currentMetric
+    : common.includes("music21") ? "music21" : common[0];
+  const sel = el("select", { onchange: (e) => { currentMetric = e.target.value; render(e.target.value); } });
+  common.forEach((m) => sel.append(el("option", { value: m }, m)));
+  sel.value = metric;
+  app.append(el("div", { class: "filters" }, el("label", {}, "Metric ", sel)));
+
+  const content = el("div", {});
+  app.append(content);
+  render(metric);
+
+  async function render(m) {
+    metric = m;
+    clearCharts();
+    content.innerHTML = '<p class="muted">loading…</p>';
+    const [ra, rb] = await Promise.all([
+      getJSON(`/api/runs/${runA}/scores/${m}`),
+      getJSON(`/api/runs/${runB}/scores/${m}`),
+    ]);
+    const primary = METRICS[m]?.primary;
+    content.innerHTML = "";
+
+    const ha = headline(ra.summary), hb = headline(rb.summary);
+    content.append(el("div", { class: "card" }, el("h2", {}, `${m} · ${ma.corpus}`),
+      el("div", { class: "summary-list" },
+        el("div", {}, el("div", { class: "k" }, `A · ${labelA}`), el("div", { class: "v" }, ha ? pct(ha.value) : "—")),
+        el("div", {}, el("div", { class: "k" }, `B · ${labelB}`), el("div", { class: "v" }, hb ? pct(hb.value) : "—")))));
+
+    // align per-sample by id; primary is lower=better, so delta = A - B
+    const aBy = {}, bBy = {};
+    ra.samples.forEach((s) => { if (s.ok && primary in s) aBy[s.id] = s[primary]; });
+    rb.samples.forEach((s) => { if (s.ok && primary in s) bBy[s.id] = s[primary]; });
+    const rows = Object.keys(aBy).filter((id) => id in bBy)
+      .map((id) => ({ id, a: aBy[id], b: bBy[id], d: aBy[id] - bBy[id] }));
+
+    const section = (title, sorted) => {
+      const table = el("table", {}, el("thead", {}, el("tr", {},
+        el("th", {}, "Sample"), el("th", { class: "num" }, "A"), el("th", { class: "num" }, "B"), el("th", { class: "num" }, "Δ"))));
+      const tb = el("tbody");
+      if (!sorted.length) tb.append(el("tr", {}, el("td", { colspan: "4", class: "muted" }, "none")));
+      sorted.slice(0, 25).forEach((r) => tb.append(
+        el("tr", { class: "clickable", onclick: () => (location.hash = `#/comparecase/${runA}/${runB}/${r.id}`) },
+          el("td", {}, r.id),
+          el("td", { class: "num" }, pct(r.a)),
+          el("td", { class: "num" }, pct(r.b)),
+          el("td", { class: "num" }, pct(r.d)))));
+      table.append(tb);
+      content.append(el("h2", {}, title), el("div", { class: "card" }, table));
+    };
+    section(`Where A beats B — ${labelA}`, rows.filter((r) => r.d < 0).sort((x, y) => x.d - y.d));
+    section(`Where B beats A — ${labelB}`, rows.filter((r) => r.d > 0).sort((x, y) => y.d - x.d));
+  }
+}
+
+async function viewCompareCase(runA, runB, sampleId) {
+  const [ma, mb] = await Promise.all([getJSON(`/api/runs/${runA}`), getJSON(`/api/runs/${runB}`)]);
+  app.innerHTML = "";
+  app.append(el("div", { class: "breadcrumb" },
+    el("a", { onclick: () => (location.hash = `#/compare/${runA}/${runB}/${currentMetric || "music21"}`) }, "Compare"),
+    ` sample ${sampleId}`));
+
+  const qa = `run_id=${encodeURIComponent(runA)}&sample_id=${encodeURIComponent(sampleId)}`;
+  const qb = `run_id=${encodeURIComponent(runB)}&sample_id=${encodeURIComponent(sampleId)}`;
+
+  const panel = (title, kid) => el("div", { class: "panel" }, el("h3", {}, title), kid);
+  const img = el("img", { src: `/api/file/image?${qa}`, onerror: () => img.replaceWith(el("p", { class: "err" }, "no image")) });
+  const refBox = el("div", {}, el("p", { class: "muted" }, "rendering…"));
+  const aBox = el("div", {}, el("p", { class: "muted" }, "rendering…"));
+  const bBox = el("div", {}, el("p", { class: "muted" }, "rendering…"));
+
+  app.append(el("div", { class: "case-panels compare-panels" },
+    panel("Source image", img),
+    panel("Ground truth", refBox),
+    panel(`A · ${ma.engine} @ ${shortDate(ma.date)}`, aBox),
+    panel(`B · ${mb.engine} @ ${shortDate(mb.date)}`, bBox)));
+
+  renderNotation(refBox, `/api/file/musicxml?${qa}&side=reference`);
+  renderNotation(aBox, `/api/file/musicxml?${qa}&side=prediction`);
+  renderNotation(bBox, `/api/file/musicxml?${qb}&side=prediction`);
+}
+
 async function viewMetrics() {
   const metrics = await getJSON("/api/metrics");
   app.innerHTML = "";
@@ -342,6 +448,8 @@ async function route() {
   app.innerHTML = '<p class="muted">Loading…</p>';
   try {
     if (parts[0] === "metrics") await viewMetrics();
+    else if (parts[0] === "comparecase") await viewCompareCase(parts[1], parts[2], parts[3]);
+    else if (parts[0] === "compare") await viewCompare(parts[1], parts[2], parts[3]);
     else if (parts[0] === "case") await viewCase(parts[1], parts[2]);
     else if (parts[0] === "runs" && parts[1]) await viewRun(parts[1], parts[2]);
     else await viewRuns();
