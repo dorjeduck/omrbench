@@ -93,9 +93,9 @@ function clearCharts() {
 
 // ---- views -----------------------------------------------------------------
 
-function runRow(r) {
-  // A run can hold several metric scores; the list previews music21 if present.
-  const s = r.summaries?.music21;
+function runRow(r, metric) {
+  // The score column follows the selected metric; "—" if this run lacks it.
+  const s = r.summaries?.[metric];
   const h = s ? headline(s) : null;
   const scored = s ? `${s.samples_scored ?? "?"}/${s.samples_total ?? "?"}` : "—";
   return el("tr", { class: "clickable", onclick: () => (location.hash = `#/runs/${r.run_id}`) },
@@ -116,33 +116,43 @@ async function viewRuns() {
     return;
   }
 
-  // Engine and corpus are filters on top of the one runs list (not separate views).
+  // Engine and corpus are filters on top of the one runs list; the metric picker
+  // (cached metrics only) drives the score column.
   const distinct = (key) => [...new Set(runs.map((r) => r[key]))].sort();
+  const metrics = [...new Set(runs.flatMap((r) => Object.keys(r.summaries || {})))].sort();
+  if (!metrics.length) metrics.push("music21");
   let fEngine = "all", fCorpus = "all";
-  const select = (opts, onpick) => {
-    const s = el("select", { onchange: (e) => onpick(e.target.value) }, el("option", { value: "all" }, "All"));
+  let fMetric = metrics.includes("music21") ? "music21" : metrics[0];
+
+  const select = (opts, onpick, withAll) => {
+    const s = el("select", { onchange: (e) => onpick(e.target.value) });
+    if (withAll) s.append(el("option", { value: "all" }, "All"));
     opts.forEach((o) => s.append(el("option", { value: o }, o)));
+    if (!withAll) s.value = fMetric;
     return s;
   };
   const filters = el("div", { class: "filters" },
-    el("label", {}, "Engine ", select(distinct("engine"), (v) => { fEngine = v; draw(); })),
-    el("label", {}, "Corpus ", select(distinct("corpus"), (v) => { fCorpus = v; draw(); })));
+    el("label", {}, "Engine ", select(distinct("engine"), (v) => { fEngine = v; draw(); }, true)),
+    el("label", {}, "Corpus ", select(distinct("corpus"), (v) => { fCorpus = v; draw(); }, true)),
+    el("label", {}, "Metric ", select(metrics, (v) => { fMetric = v; draw(); }, false)));
 
+  const scoreTh = el("th", { class: "num" }, `score (${fMetric})`);
   const thead = el("thead", {}, el("tr", {},
     el("th", {}, "Date"), el("th", {}, "Engine"), el("th", {}, "Version"),
     el("th", {}, "Corpus"), el("th", {}, "Tier"),
-    el("th", { class: "num" }, "Scored"), el("th", { class: "num" }, "SER (music21)")));
+    el("th", { class: "num" }, "Scored"), scoreTh));
   const tbody = el("tbody");
   app.append(el("h2", {}, "Runs"), filters, el("div", { class: "card" }, el("table", {}, thead, tbody)));
 
   function draw() {
+    scoreTh.textContent = `score (${fMetric})`;
     tbody.innerHTML = "";
     const rows = runs.filter((r) =>
       (fEngine === "all" || r.engine === fEngine) && (fCorpus === "all" || r.corpus === fCorpus));
     if (!rows.length) {
       tbody.append(el("tr", {}, el("td", { colspan: "7", class: "muted" }, "no runs match")));
     }
-    rows.forEach((r) => tbody.append(runRow(r)));
+    rows.forEach((r) => tbody.append(runRow(r, fMetric)));
   }
   draw();
 }
@@ -155,72 +165,90 @@ async function viewRun(runId) {
     el("a", { onclick: () => (location.hash = "#/runs") }, "Runs"),
     ` ${meta.engine} @ ${shortDate(meta.date)}`));
 
-  // Scores are computed on demand by the server and cached; the first view of a
-  // run can take a moment, so show a placeholder while it scores.
-  const metric = "music21";
-  const primary = METRICS[metric]?.primary;
-  const pending = el("div", { class: "card" }, el("p", { class: "muted" }, "scoring…"));
-  app.append(pending);
-  let rec;
-  try {
-    rec = await getJSON(`/api/runs/${runId}/scores/${metric}`);
-  } catch (e) {
-    pending.replaceWith(el("div", { class: "card" }, el("p", { class: "err" }, `could not score: ${e.message}`)));
+  // Metric selector lists only the metrics this run has been scored on (cached),
+  // so picking one never triggers a long compute in the browser.
+  const metrics = meta.metrics || [];
+  if (!metrics.length) {
+    app.append(el("div", { class: "card" }, el("p", { class: "muted" },
+      "Not scored yet — run ", el("code", {}, `omrbench score ${runId}`), " to score this run.")));
     return;
   }
-  pending.remove();
+  let metric = metrics.includes("music21") ? "music21" : metrics[0];
+  const sel = el("select", { onchange: (e) => renderScore(e.target.value) });
+  metrics.forEach((m) => sel.append(el("option", { value: m }, m)));
+  sel.value = metric;
+  app.append(el("div", { class: "filters" }, el("label", {}, "Metric ", sel)));
 
-  // summary stats
-  const stats = el("div", { class: "summary-list" });
-  for (const [k, v] of Object.entries(rec.summary)) {
-    const isPct = k.endsWith("_ser") || k.endsWith("omr_ned");
-    stats.append(el("div", {}, el("div", { class: "k" }, k), el("div", { class: "v" }, isPct ? pct(v) : String(v))));
-  }
-  app.append(el("div", { class: "card" },
-    el("h2", {}, `${metric} · ${meta.corpus}`), stats,
-    el("p", { class: "muted" }, `engine version: ${meta.engine_version || "—"}`)));
+  const content = el("div", {});
+  app.append(content);
+  renderScore(metric);
 
-  const scored = rec.samples.filter((s) => s.ok && primary in s);
-
-  // distribution histogram of the primary per-sample field
-  if (primary && scored.length) {
-    const bins = Array(11).fill(0); // 0..0.9 in 0.1 steps, plus a ">=1.0" bin
-    for (const s of scored) {
-      const v = s[primary];
-      bins[v >= 1 ? 10 : Math.min(9, Math.floor(v * 10))]++;
-    }
-    const labels = [...Array(10)].map((_, i) => `${(i * 10)}–${i * 10 + 10}%`).concat("≥100%");
-    const canvas = el("canvas");
-    app.append(el("div", { class: "card" },
-      el("h2", {}, `Distribution of ${primary}`), el("div", { class: "chart-box" }, canvas)));
+  async function renderScore(m) {
+    metric = m;
     clearCharts();
-    newChart(canvas, {
-      type: "bar",
-      data: { labels, datasets: [{ label: "samples", data: bins, backgroundColor: "#2b6cb0" }] },
-      options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { precision: 0 } } } },
-    });
-  }
+    content.innerHTML = '<p class="muted">loading…</p>';
+    let rec;
+    try {
+      rec = await getJSON(`/api/runs/${runId}/scores/${m}`);
+    } catch (e) {
+      content.innerHTML = "";
+      content.append(el("p", { class: "err" }, `could not load: ${e.message}`));
+      return;
+    }
+    const primary = METRICS[m]?.primary;
+    content.innerHTML = "";
 
-  // worst-N table
-  const worst = scored.slice().sort((a, b) => (b[primary] ?? 0) - (a[primary] ?? 0)).slice(0, 25);
-  const fieldKeys = worst.length ? Object.keys(worst[0]).filter((k) => k !== "id" && k !== "ok") : [];
-  const table = el("table", {},
-    el("thead", {}, el("tr", {}, el("th", {}, "Sample"),
-      ...fieldKeys.map((k) => el("th", { class: "num" }, k)))));
-  const tbody = el("tbody");
-  for (const s of worst) {
-    const tr = el("tr", { class: "clickable", onclick: () => (location.hash = `#/case/${runId}/${s.id}`) },
-      el("td", {}, s.id),
-      ...fieldKeys.map((k) => {
-        const isPct = k === primary || k.endsWith("_ser") || k.endsWith("omr_ned");
-        return el("td", { class: "num" }, isPct ? pct(s[k]) : String(s[k]));
-      }));
-    tbody.append(tr);
+    // summary stats
+    const stats = el("div", { class: "summary-list" });
+    for (const [k, v] of Object.entries(rec.summary)) {
+      const isPct = k.endsWith("_ser") || k.endsWith("omr_ned");
+      stats.append(el("div", {}, el("div", { class: "k" }, k), el("div", { class: "v" }, isPct ? pct(v) : String(v))));
+    }
+    content.append(el("div", { class: "card" },
+      el("h2", {}, `${m} · ${meta.corpus}`), stats,
+      el("p", { class: "muted" }, `engine version: ${meta.engine_version || "—"}`)));
+
+    const scored = rec.samples.filter((s) => s.ok && primary in s);
+
+    // distribution histogram of the primary per-sample field
+    if (primary && scored.length) {
+      const bins = Array(11).fill(0); // 0..0.9 in 0.1 steps, plus a ">=1.0" bin
+      for (const s of scored) {
+        const v = s[primary];
+        bins[v >= 1 ? 10 : Math.min(9, Math.floor(v * 10))]++;
+      }
+      const labels = [...Array(10)].map((_, i) => `${(i * 10)}–${i * 10 + 10}%`).concat("≥100%");
+      const canvas = el("canvas");
+      content.append(el("div", { class: "card" },
+        el("h2", {}, `Distribution of ${primary}`), el("div", { class: "chart-box" }, canvas)));
+      newChart(canvas, {
+        type: "bar",
+        data: { labels, datasets: [{ label: "samples", data: bins, backgroundColor: "#2b6cb0" }] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { precision: 0 } } } },
+      });
+    }
+
+    // worst-N table
+    const worst = scored.slice().sort((a, b) => (b[primary] ?? 0) - (a[primary] ?? 0)).slice(0, 25);
+    const fieldKeys = worst.length ? Object.keys(worst[0]).filter((k) => k !== "id" && k !== "ok") : [];
+    const table = el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Sample"),
+        ...fieldKeys.map((k) => el("th", { class: "num" }, k)))));
+    const tbody = el("tbody");
+    for (const s of worst) {
+      const tr = el("tr", { class: "clickable", onclick: () => (location.hash = `#/case/${runId}/${s.id}`) },
+        el("td", {}, s.id),
+        ...fieldKeys.map((k) => {
+          const isPct = k === primary || k.endsWith("_ser") || k.endsWith("omr_ned");
+          return el("td", { class: "num" }, isPct ? pct(s[k]) : String(s[k]));
+        }));
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    content.append(el("h2", {}, "Worst samples"),
+      el("p", { class: "muted" }, "Click a row to compare the prediction with the ground truth."),
+      el("div", { class: "card" }, table));
   }
-  table.append(tbody);
-  app.append(el("h2", {}, "Worst samples"),
-    el("p", { class: "muted" }, "Click a row to compare the prediction with the ground truth."),
-    el("div", { class: "card" }, table));
 }
 
 async function viewCase(runId, sampleId) {
