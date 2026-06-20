@@ -103,7 +103,7 @@ never imports or hard-codes homr:
 
 ```toml
 [engines.homr]
-adapter = "homr"
+engine  = "homr"        # the tool (identity + default adapter); version auto-detected from cwd
 cmd     = "poetry run homr"
 cwd     = "/Users/dorjeduck/dev/2026/pdf_mxml/homr"
 ```

@@ -98,21 +98,22 @@ read what each metric measures. See **[serve.md](serve.md)** for details.
 
 ### Engines
 
-An engine is a named entry in `omrbench.toml` binding an adapter (the code that
-drives an OMR tool) to a command and optional working directory. Copy
-`omrbench.toml.example` to `omrbench.toml` and edit. This is the only place a
-tool's install/version/location lives — so benchmarking two homr versions is
-just two entries:
+An engine entry in `omrbench.toml` declares one runnable instance of a tool. Copy
+`omrbench.toml.example` to `omrbench.toml` and edit. `engine` is the tool (the
+identity runs group on); `version` is declared or auto-detected; `adapter` (the
+driver code) defaults to `engine`. So benchmarking two homr versions is two
+entries that share `engine = "homr"`:
 
 ```toml
 [engines.homr]                # pip/uvx install on PATH
-adapter = "homr"
+engine  = "homr"
+version = "0.7.0"             # PATH install has no git to describe -> declare it
 cmd     = "homr"
 
-[engines.homr-0_6]            # a specific checkout
-adapter = "homr"
+[engines.homr-0_6]            # a specific checkout, same tool -> same lineage
+engine  = "homr"
 cmd     = "poetry run homr"
-cwd     = "/path/to/homr-v0.6"   # optional: required when cmd must run from a dir
+cwd     = "/path/to/homr-v0.6"   # version auto-detected from this checkout
 ```
 
 ```bash
