@@ -68,6 +68,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 select, button { font: inherit; padding: 0.3rem 0.5rem; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
 
+.filters { display: flex; gap: 1.2rem; align-items: center; margin: 0.4rem 0 0.8rem; }
+.filters label { display: flex; gap: 0.4rem; align-items: center; color: var(--muted); font-size: 0.9rem; }
+
 .metric-doc h2 { margin-top: 0; }
 .metric-doc dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0.6rem 0; }
 .metric-doc dt { font-family: ui-monospace, monospace; color: var(--accent); }

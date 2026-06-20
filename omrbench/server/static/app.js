@@ -93,6 +93,21 @@ function clearCharts() {
 
 // ---- views -----------------------------------------------------------------
 
+function runRow(r) {
+  // A run can hold several metric scores; the list previews music21 if present.
+  const s = r.summaries?.music21;
+  const h = s ? headline(s) : null;
+  const scored = s ? `${s.samples_scored ?? "?"}/${s.samples_total ?? "?"}` : "—";
+  return el("tr", { class: "clickable", onclick: () => (location.hash = `#/runs/${r.run_id}`) },
+    el("td", {}, shortDate(r.date)),
+    el("td", {}, r.engine),
+    el("td", {}, r.engine_version || "—"),
+    el("td", {}, r.corpus),
+    el("td", {}, el("span", { class: "tier" }, r.tier || "—")),
+    el("td", { class: "num" }, scored),
+    el("td", { class: "num" }, h ? pct(h.value) : "—"));
+}
+
 async function viewRuns() {
   const runs = await getJSON("/api/runs");
   app.innerHTML = "";
@@ -101,30 +116,35 @@ async function viewRuns() {
     return;
   }
 
-  const table = el("table", {},
-    el("thead", {}, el("tr", {},
-      el("th", {}, "Date"), el("th", {}, "Engine"), el("th", {}, "Version"),
-      el("th", {}, "Corpus"), el("th", {}, "Tier"),
-      el("th", { class: "num" }, "Scored"), el("th", { class: "num" }, "SER (music21)")))
-  );
+  // Engine and corpus are filters on top of the one runs list (not separate views).
+  const distinct = (key) => [...new Set(runs.map((r) => r[key]))].sort();
+  let fEngine = "all", fCorpus = "all";
+  const select = (opts, onpick) => {
+    const s = el("select", { onchange: (e) => onpick(e.target.value) }, el("option", { value: "all" }, "All"));
+    opts.forEach((o) => s.append(el("option", { value: o }, o)));
+    return s;
+  };
+  const filters = el("div", { class: "filters" },
+    el("label", {}, "Engine ", select(distinct("engine"), (v) => { fEngine = v; draw(); })),
+    el("label", {}, "Corpus ", select(distinct("corpus"), (v) => { fCorpus = v; draw(); })));
+
+  const thead = el("thead", {}, el("tr", {},
+    el("th", {}, "Date"), el("th", {}, "Engine"), el("th", {}, "Version"),
+    el("th", {}, "Corpus"), el("th", {}, "Tier"),
+    el("th", { class: "num" }, "Scored"), el("th", { class: "num" }, "SER (music21)")));
   const tbody = el("tbody");
-  for (const r of runs) {
-    // A run can hold several metric scores; the list previews music21 if present.
-    const s = r.summaries?.music21;
-    const h = s ? headline(s) : null;
-    const scored = s ? `${s.samples_scored ?? "?"}/${s.samples_total ?? "?"}` : "—";
-    const tr = el("tr", { class: "clickable", onclick: () => (location.hash = `#/runs/${r.run_id}`) },
-      el("td", {}, shortDate(r.date)),
-      el("td", {}, r.engine),
-      el("td", {}, r.engine_version || "—"),
-      el("td", {}, r.corpus),
-      el("td", {}, el("span", { class: "tier" }, r.tier || "—")),
-      el("td", { class: "num" }, scored),
-      el("td", { class: "num" }, h ? pct(h.value) : "—"));
-    tbody.append(tr);
+  app.append(el("h2", {}, "Runs"), filters, el("div", { class: "card" }, el("table", {}, thead, tbody)));
+
+  function draw() {
+    tbody.innerHTML = "";
+    const rows = runs.filter((r) =>
+      (fEngine === "all" || r.engine === fEngine) && (fCorpus === "all" || r.corpus === fCorpus));
+    if (!rows.length) {
+      tbody.append(el("tr", {}, el("td", { colspan: "7", class: "muted" }, "no runs match")));
+    }
+    rows.forEach((r) => tbody.append(runRow(r)));
   }
-  table.append(tbody);
-  app.append(el("h2", {}, "Runs"), el("div", { class: "card" }, table));
+  draw();
 }
 
 async function viewRun(runId) {
