@@ -98,7 +98,7 @@ function runRow(r, metric) {
   const s = r.summaries?.[metric];
   const h = s ? headline(s) : null;
   const scored = s ? `${s.samples_scored ?? "?"}/${s.samples_total ?? "?"}` : "—";
-  return el("tr", { class: "clickable", onclick: () => (location.hash = `#/runs/${r.run_id}`) },
+  return el("tr", { class: "clickable", onclick: () => (location.hash = `#/runs/${r.run_id}/${metric}`) },
     el("td", {}, shortDate(r.date)),
     el("td", {}, r.engine),
     el("td", {}, r.engine_version || "—"),
@@ -157,7 +157,7 @@ async function viewRuns() {
   draw();
 }
 
-async function viewRun(runId) {
+async function viewRun(runId, wantMetric) {
   const meta = await getJSON(`/api/runs/${runId}`);
   app.innerHTML = "";
 
@@ -173,7 +173,9 @@ async function viewRun(runId) {
       "Not scored yet — run ", el("code", {}, `omrbench score ${runId}`), " to score this run.")));
     return;
   }
-  let metric = metrics.includes("music21") ? "music21" : metrics[0];
+  // Honour the metric carried from the landing if this run has it; else default.
+  let metric = metrics.includes(wantMetric) ? wantMetric
+    : metrics.includes("music21") ? "music21" : metrics[0];
   const sel = el("select", { onchange: (e) => renderScore(e.target.value) });
   metrics.forEach((m) => sel.append(el("option", { value: m }, m)));
   sel.value = metric;
@@ -337,7 +339,7 @@ async function route() {
   try {
     if (parts[0] === "metrics") await viewMetrics();
     else if (parts[0] === "case") await viewCase(parts[1], parts[2]);
-    else if (parts[0] === "runs" && parts[1]) await viewRun(parts[1]);
+    else if (parts[0] === "runs" && parts[1]) await viewRun(parts[1], parts[2]);
     else await viewRuns();
   } catch (e) {
     app.innerHTML = "";
