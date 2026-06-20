@@ -2,6 +2,7 @@
 
 const app = document.getElementById("app");
 let METRICS = {}; // name -> {primary, title, ...}, loaded once
+let currentMetric = null; // app-wide selected metric, remembered across views
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -122,7 +123,8 @@ async function viewRuns() {
   const metrics = [...new Set(runs.flatMap((r) => Object.keys(r.summaries || {})))].sort();
   if (!metrics.length) metrics.push("music21");
   let fEngine = "all", fCorpus = "all";
-  let fMetric = metrics.includes("music21") ? "music21" : metrics[0];
+  let fMetric = metrics.includes(currentMetric) ? currentMetric
+    : metrics.includes("music21") ? "music21" : metrics[0];
 
   const select = (opts, onpick, withAll) => {
     const s = el("select", { onchange: (e) => onpick(e.target.value) });
@@ -134,7 +136,7 @@ async function viewRuns() {
   const filters = el("div", { class: "filters" },
     el("label", {}, "Engine ", select(distinct("engine"), (v) => { fEngine = v; draw(); }, true)),
     el("label", {}, "Corpus ", select(distinct("corpus"), (v) => { fCorpus = v; draw(); }, true)),
-    el("label", {}, "Metric ", select(metrics, (v) => { fMetric = v; draw(); }, false)));
+    el("label", {}, "Metric ", select(metrics, (v) => { fMetric = currentMetric = v; draw(); }, false)));
 
   const scoreTh = el("th", { class: "num" }, `score (${fMetric})`);
   const thead = el("thead", {}, el("tr", {},
@@ -173,10 +175,12 @@ async function viewRun(runId, wantMetric) {
       "Not scored yet — run ", el("code", {}, `omrbench score ${runId}`), " to score this run.")));
     return;
   }
-  // Honour the metric carried from the landing if this run has it; else default.
+  // Honour the metric carried from the landing (or last picked) if this run has
+  // it; else default.
   let metric = metrics.includes(wantMetric) ? wantMetric
+    : metrics.includes(currentMetric) ? currentMetric
     : metrics.includes("music21") ? "music21" : metrics[0];
-  const sel = el("select", { onchange: (e) => renderScore(e.target.value) });
+  const sel = el("select", { onchange: (e) => { currentMetric = e.target.value; renderScore(e.target.value); } });
   metrics.forEach((m) => sel.append(el("option", { value: m }, m)));
   sel.value = metric;
   app.append(el("div", { class: "filters" }, el("label", {}, "Metric ", sel)));
