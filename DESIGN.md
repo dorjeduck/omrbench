@@ -78,15 +78,17 @@ framing a comparison as *regression* (same engine, two versions) vs *competition
 (two engines). So `run.json` records the **engine** (the tool — same string across
 versions) and the **version** as separate fields.
 
-A toml entry declares one runnable instance:
+The config is a **list** of entries; an entry is identified by the pair
+**engine + version** (no hand-typed label — that arbitrary key was the source of
+"why is it called `homr-0_6_1`?" confusion, where the table key competed with the
+`engine` field). "engine" thus means the same thing everywhere — the tool:
 
 ```toml
-[engines.homr-0_6_1]       # entry name: a unique config key
-engine  = "homr"           # required: the tool — the identity grouped on, and the
-                           #   default adapter to load
-version = "0.6.1"          # the version. Declared here; if omitted, fall back to
-                           #   the adapter's auto-detect (e.g. git describe); if
-                           #   neither yields one, `run` errors (can't name the run)
+[[engines]]                # a list entry; identity = engine + version
+engine  = "homr"           # required: the tool — the identity runs group on, and
+                           #   the default adapter to load
+version = "0.6.1"          # required: this install's version. With engine it names
+                           #   the entry, and it names the run (run-id below)
 cmd     = "poetry run homr"
 cwd     = "/path/to/homr-v0.6.1"
 # adapter = "..."          # optional: the driver code (class in adapters/). Defaults
@@ -94,10 +96,14 @@ cwd     = "/path/to/homr-v0.6.1"
                            #   from the tool (e.g. a generic/shared adapter)
 ```
 
-The user declares the **engine** (the tool they care about); **adapter** is
-internal plumbing and only surfaces in config as an escape hatch. **version** is
-crucial (it names and distinguishes the run), so it is required to end up known —
-declared, else auto-detected.
+Selection is by what is real: `--engine homr --version 0.6.1` (`--version` needed
+only when an engine has more than one entry). The user declares the **engine** (the
+tool they care about) and **version**; **adapter** is internal plumbing, an escape
+hatch. Two entries with the same engine+version is an error.
+
+(The adapter retains an optional auto-detect `version()`, e.g. git describe, but
+the config requires `version` outright — it is half the identity, so it is not left
+to detection.)
 
 ## Scoring: on demand, cached
 

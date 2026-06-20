@@ -1,23 +1,26 @@
-"""Named engine instances declared in ``omrbench.toml``.
+"""Engine configs declared in ``omrbench.toml``.
 
-An engine instance binds an *adapter* (the code that drives an OMR engine) to a
-concrete command and optional working directory. This is what ``--engine``
-names, and it is the only place a homr install/version/location is recorded — so
-benchmarking two homr versions is just two entries, with no environment
-variables and no hand-set output paths.
+The config is a list of entries, each one a concrete install of an engine. An
+entry is identified by the pair **engine + version** (no hand-typed label): the
+``engine`` is the tool (e.g. ``homr``, shared across versions, what runs group
+on), and ``version`` distinguishes installs of it. So benchmarking two homr
+versions is two entries that share ``engine = "homr"`` and differ in ``version``:
 
-    [engines.homr]                # pip/uvx install on PATH
-    adapter = "homr"
-    cmd     = "homr"
-
-    [engines.homr-0_6]            # a specific checkout
-    adapter = "homr"
+    [[engines]]
+    engine  = "homr"
+    version = "0.6.2"
     cmd     = "poetry run homr"
-    cwd     = "/path/to/homr-v0.6"   # optional: required when cmd must run from
-                                      # a specific dir (e.g. poetry run)
+    cwd     = "/path/to/homr"
 
-The benchmark core still never imports an engine: this module only reads strings
-from a config file and hands them to an adapter that shells out.
+    [[engines]]
+    engine  = "homr"
+    version = "0.6.1"
+    cmd     = "poetry run homr"
+    cwd     = "/path/to/homr-v0.6.1"
+
+``adapter`` (the driver code in ``adapters/``) is optional and defaults to
+``engine``. The benchmark core still never imports an engine: this module only
+reads strings from a config file and hands them to an adapter that shells out.
 """
 
 from __future__ import annotations
@@ -30,38 +33,67 @@ from omrbench.adapters import REGISTRY, Adapter
 DEFAULT_CONFIG = Path("omrbench.toml")
 
 
-def load_engine(name: str, config: Path | None = None) -> Adapter:
-    """Resolve engine ``name`` to a ready-to-run adapter, or raise with a clear
-    message. Exactly one rule: the name must be an entry in ``omrbench.toml``."""
-    path = config or DEFAULT_CONFIG
+def _entries(path: Path) -> list[dict]:
     if not path.exists():
         raise FileNotFoundError(
-            f"no engine config at {path}; declare engines in [engines.<name>] there"
+            f"no engine config at {path}; declare engines as [[engines]] entries there"
         )
-    engines = tomllib.loads(path.read_text()).get("engines", {})
-    if name not in engines:
-        known = ", ".join(sorted(engines)) or "(none)"
-        raise KeyError(f"unknown engine {name!r}; declared engines: {known}")
+    return tomllib.loads(path.read_text()).get("engines", [])
 
-    entry = engines[name]
-    engine_identity = entry.get("engine")
-    if not engine_identity:
-        raise KeyError(f"engine {name!r} is missing required 'engine' (the tool name)")
+
+def _ident(entry: dict) -> str:
+    return f"{entry.get('engine', '?')}@{entry.get('version', '?')}"
+
+
+def load_engine(engine: str, version: str | None = None, config: Path | None = None) -> Adapter:
+    """Resolve an engine (and version) to a ready-to-run adapter, or raise with a
+    clear message. An entry is identified by engine + version; ``version`` may be
+    omitted only when the engine has exactly one entry."""
+    path = config or DEFAULT_CONFIG
+    entries = _entries(path)
+
+    matches = [e for e in entries if e.get("engine") == engine]
+    if not matches:
+        known = ", ".join(sorted({_ident(e) for e in entries})) or "(none)"
+        raise KeyError(f"unknown engine {engine!r}; declared: {known}")
+
+    if version is None:
+        if len(matches) > 1:
+            versions = ", ".join(sorted(str(e.get("version")) for e in matches))
+            raise KeyError(
+                f"engine {engine!r} has several versions ({versions}); pass --version"
+            )
+        entry = matches[0]
+    else:
+        byver = [e for e in matches if str(e.get("version")) == version]
+        if not byver:
+            versions = ", ".join(sorted(str(e.get("version")) for e in matches))
+            raise KeyError(
+                f"no {engine!r} version {version!r}; declared versions: {versions}"
+            )
+        if len(byver) > 1:
+            raise KeyError(f"duplicate config for {engine}@{version}")
+        entry = byver[0]
+
+    if not entry.get("version"):
+        raise KeyError(f"engine entry {engine!r} is missing required 'version'")
+    if "cmd" not in entry:
+        raise KeyError(f"engine entry {_ident(entry)} is missing required 'cmd'")
+
     # The adapter (driver code) defaults to the tool name; override only when the
     # driver differs from the tool.
-    adapter_type = entry.get("adapter", engine_identity)
+    adapter_type = entry.get("adapter", engine)
     if adapter_type not in REGISTRY:
         known = ", ".join(sorted(REGISTRY))
         raise KeyError(
-            f"engine {name!r} uses unknown adapter {adapter_type!r}; known adapters: {known}"
+            f"engine entry {_ident(entry)} uses unknown adapter {adapter_type!r}; "
+            f"known adapters: {known}"
         )
-    if "cmd" not in entry:
-        raise KeyError(f"engine {name!r} is missing required 'cmd'")
 
     return REGISTRY[adapter_type](
-        name=name,
+        name=_ident(entry),
         cmd=entry["cmd"],
         cwd=entry.get("cwd"),
-        engine=engine_identity,
-        declared_version=entry.get("version"),
+        engine=engine,
+        declared_version=str(entry["version"]),
     )

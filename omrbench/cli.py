@@ -44,18 +44,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from omrbench.engines import load_engine
 
     try:
-        engine = load_engine(args.engine)
+        engine = load_engine(args.engine, args.version)
     except (FileNotFoundError, KeyError) as exc:
         print(str(exc).strip("'\""), file=sys.stderr)
         return 2
     version = engine.resolved_version()
-    if not version:
-        print(
-            f"could not determine the version for engine {args.engine!r}; "
-            "declare 'version' in omrbench.toml",
-            file=sys.stderr,
-        )
-        return 2
     samples = discover(Path(args.corpus))
     when = datetime.now(timezone.utc)
     run_dir = runs.create_run_dir(engine.engine, version, when)
@@ -182,7 +175,8 @@ def main(argv: list[str] | None = None) -> int:
     p_fetch.set_defaults(func=_cmd_fetch)
 
     p_run = sub.add_parser("run", help="run an OMR engine over a corpus -> a new run")
-    p_run.add_argument("--engine", required=True, help="engine name from omrbench.toml")
+    p_run.add_argument("--engine", required=True, help="engine (tool) name from omrbench.toml")
+    p_run.add_argument("--version", help="engine version (needed when the engine has several)")
     p_run.add_argument("--corpus", required=True)
     p_run.set_defaults(func=_cmd_run)
 

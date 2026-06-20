@@ -98,28 +98,32 @@ read what each metric measures. See **[serve.md](serve.md)** for details.
 
 ### Engines
 
-An engine entry in `omrbench.toml` declares one runnable instance of a tool. Copy
-`omrbench.toml.example` to `omrbench.toml` and edit. `engine` is the tool (the
-identity runs group on); `version` is declared or auto-detected; `adapter` (the
-driver code) defaults to `engine`. So benchmarking two homr versions is two
-entries that share `engine = "homr"`:
+`omrbench.toml` is a list of `[[engines]]` entries, each a concrete install.
+Copy `omrbench.toml.example` and edit. An entry is identified by **engine +
+version** (no hand-typed label): `engine` is the tool (the identity runs group
+on), `version` distinguishes installs; `adapter` (the driver code) defaults to
+`engine`. So benchmarking two homr versions is two entries sharing
+`engine = "homr"` with different `version`:
 
 ```toml
-[engines.homr]                # pip/uvx install on PATH
+[[engines]]
 engine  = "homr"
-version = "0.7.0"             # PATH install has no git to describe -> declare it
+version = "0.7.0"
 cmd     = "homr"
 
-[engines.homr-0_6]            # a specific checkout, same tool -> same lineage
+[[engines]]                   # same tool -> same lineage
 engine  = "homr"
+version = "0.6.0"
 cmd     = "poetry run homr"
-cwd     = "/path/to/homr-v0.6"   # version auto-detected from this checkout
+cwd     = "/path/to/homr-v0.6"
 ```
 
 ```bash
-omrbench run   --engine homr-0_6 --corpus corpus/tier2_real/polish_scores
+omrbench run   --engine homr --version 0.6.0 --corpus corpus/tier2_real/polish_scores
 omrbench score <run-id>        # the run id that `run` printed
 ```
+
+`--version` is needed only when an engine has more than one entry.
 
 `grandstaff` is an engraved (synthetic) dataset of tens of thousands of
 kern/image pairs (large download, cached); `--limit`/`--seed` select a

@@ -81,15 +81,17 @@ pip install -e '.[fetch]'   # + dataset download (datasets, huggingface_hub)
 pip install -e '.[omr-ned]' # + the omr-ned metric (musicdiff)
 
 omrbench fetch polish-scores
-omrbench run   --engine homr --corpus corpus/tier2_real/polish_scores  # -> a run id
+omrbench run   --engine homr --version 0.6.1 --corpus corpus/tier2_real/polish_scores  # -> a run id
 omrbench score <run-id>                       # engine + corpus come from run.json
 omrbench score <run-id> --metric omr-ned
 omrbench score                                # score every run missing that metric
 ```
 
-`--engine` (on `run`) names an entry in `omrbench.toml` (see
-`omrbench.toml.example`); the run lands in `runs/<engine>-<timestamp>/`. Multiple
-versions of one tool are just multiple entries.
+`omrbench.toml` is a list of `[[engines]]` entries, each identified by **engine +
+version** (no hand-typed label). `--engine` (+ `--version` when an engine has more
+than one) on `run` selects one; the run lands in
+`runs/<engine>-<version>-<timestamp>/`. Two versions of one tool are two entries
+sharing `engine` → one lineage.
 
 `run` caches: a non-empty prediction file is not re-run; delete it to force a
 re-run.
@@ -102,14 +104,15 @@ The command and working dir come from an `omrbench.toml` entry, so omrbench
 never imports or hard-codes homr:
 
 ```toml
-[engines.homr]
-engine  = "homr"        # the tool (identity + default adapter); version auto-detected from cwd
+[[engines]]
+engine  = "homr"        # the tool (identity + default adapter)
+version = "0.6.2"       # names this install; with engine it identifies the entry
 cmd     = "poetry run homr"
 cwd     = "/Users/dorjeduck/dev/2026/pdf_mxml/homr"
 ```
 
-Then `omrbench run --engine homr ...`. A pip/uvx install on PATH is just
-`cmd = "homr"` with no `cwd`.
+Then `omrbench run --engine homr --version 0.6.2 ...`. A pip/uvx install on PATH
+is just `cmd = "homr"` with no `cwd`.
 
 ## Adding an engine
 
