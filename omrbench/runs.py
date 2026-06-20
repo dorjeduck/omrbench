@@ -57,6 +57,13 @@ class Run:
     def prediction(self, sample_id: str) -> Path:
         return self.predictions_dir / f"{sample_id}.musicxml"
 
+    def prediction_ids(self) -> set[str]:
+        """The sample ids this run produced predictions for — the authoritative
+        'what this run covered', independent of scoring."""
+        if not self.predictions_dir.is_dir():
+            return set()
+        return {p.stem for p in self.predictions_dir.glob("*.musicxml")}
+
     @property
     def scores_dir(self) -> Path:
         return self.dir / "scores"

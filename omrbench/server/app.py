@@ -39,6 +39,13 @@ def create_app() -> FastAPI:
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/api/runs/{run_id}/comparable")
+    def comparable(run_id: str) -> list[dict]:
+        try:
+            return [asdict(r) for r in records.comparable_runs(run_id)]
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @app.get("/api/runs/{run_id}/scores/{metric}")
     def score(run_id: str, metric: str) -> dict:
         # Computed and cached on first request (on-demand scoring) — engine-free.

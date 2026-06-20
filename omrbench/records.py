@@ -73,6 +73,19 @@ def list_runs() -> list[RunMeta]:
     return [_meta(run) for run in _list_runs()]
 
 
+def comparable_runs(run_id: str) -> list[RunMeta]:
+    """Runs that can be put head-to-head with ``run_id``: same corpus and sharing
+    at least one sample (so the comparison has something to align on). Newest
+    first, the run itself excluded."""
+    target = _load_run(run_id)
+    target_ids = target.prediction_ids()
+    return [
+        _meta(run)
+        for run in _list_runs()
+        if run.run_id != run_id and run.corpus == target.corpus and target_ids & run.prediction_ids()
+    ]
+
+
 def load_run(run_id: str) -> dict:
     """A run's metadata + the list of metrics it has been scored on."""
     run = _load_run(run_id)
