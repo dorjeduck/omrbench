@@ -44,7 +44,7 @@ th { font-weight: 600; color: var(--muted); font-size: 0.8rem; text-transform: u
 tr.clickable:hover { background: #f0f6ff; cursor: pointer; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
-.tier { font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 3px; background: #eee; color: #555; }
+.kind { font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 3px; background: #eee; color: #555; }
 
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1rem; margin-bottom: 1.2rem; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
@@ -67,7 +67,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .panel svg { max-width: 100%; height: auto; }
 .panel .err { color: var(--bad); font-size: 0.85rem; }
 
-select, button { font: inherit; padding: 0.3rem 0.5rem; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+select, button, input, textarea { font: inherit; padding: 0.3rem 0.5rem; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+textarea { margin-bottom: 0.6rem; font-family: ui-monospace, monospace; }
+.meta-list { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0; }
+.meta-list dt { font-family: ui-monospace, monospace; color: var(--accent); }
+.meta-list dd { margin: 0; }
 button.del { padding: 0.1rem 0.4rem; border-color: transparent; color: var(--muted); cursor: pointer; }
 button.del:hover { color: #c0392b; border-color: #c0392b; }
 .score-actions { display: inline-flex; gap: 0.4rem; }

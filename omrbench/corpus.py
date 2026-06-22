@@ -6,20 +6,28 @@ its id and contains:
     <id>/
         image.png            # the OMR input
         reference.musicxml   # the ground truth (required for scoring)
-        meta.yaml            # provenance + license + tier
+        meta.yaml            # provenance + license
 
-Tier-1 (synthetic, rendered-from-MusicXML) and Tier-2 (real scans) live in
-separate top-level folders so their scores are never silently mixed.
+Synthetic corpora (rendered-from-MusicXML) and real corpora (scans) live in
+separate top-level folders (``synthetic/`` and ``real/``) so their scores are
+never silently mixed.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import shutil
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
+
+# The two kinds of corpus, by where the ground truth comes from. Kept in
+# separate folders so their scores are never silently mixed (see CLAUDE.md); a
+# corpus's kind is its parent folder.
+KINDS = ("synthetic", "real")
+CORPUS_ROOT = Path("corpus")
 
 
 @dataclass
@@ -62,3 +70,189 @@ def discover(corpus_dir: Path) -> list[Sample]:
         if child.is_dir()
     ]
     return samples
+
+
+def kind_of(path: str | Path) -> str | None:
+    """The kind folder (``synthetic`` / ``real``) a path sits under, or None if
+    it sits under neither."""
+    for part in Path(path).parts:
+        if part in KINDS:
+            return part
+    return None
+
+
+# --- the corpus as a managed unit (list + create + edit) -------------------
+#
+# These mutate the on-disk corpus tree. They are still engine-free (MusicXML
+# files only) and live here, not in the read layer, the same way run deletion
+# lives in runs.py. Every write is confined under ``root`` and guarded against
+# path traversal so a crafted corpus id / sample id can't escape the tree.
+
+
+@dataclass
+class CorpusInfo:
+    """One corpus for the listing: its path (the id used everywhere), its kind,
+    how many samples it holds, and a small summary of their provenance."""
+
+    path: str
+    kind: str | None
+    count: int
+    sources: list[str] = field(default_factory=list)
+    licenses: list[str] = field(default_factory=list)
+
+
+def _is_sample_dir(d: Path) -> bool:
+    return d.is_dir() and (d / "reference.musicxml").is_file()
+
+
+def _is_corpus_dir(d: Path) -> bool:
+    """A corpus is a directory with at least one sample sub-directory."""
+    return d.is_dir() and any(_is_sample_dir(c) for c in d.iterdir())
+
+
+def list_corpora(root: Path = CORPUS_ROOT) -> list[CorpusInfo]:
+    """Every corpus under ``root`` (the ``corpus/`` tree), each summarised. A
+    directory counts as a corpus once it holds a sample (a child dir with a
+    reference.musicxml); we do not descend into a corpus once found."""
+    root = Path(root)
+    out: list[CorpusInfo] = []
+    if not root.is_dir():
+        return out
+
+    def is_corpus(d: Path) -> bool:
+        # Recognise a corpus either by the samples it holds or — so a freshly
+        # created, still-empty corpus shows up — by living directly under a kind
+        # folder (that's exactly where create_corpus puts it).
+        return d.parent.name in KINDS or _is_corpus_dir(d)
+
+    def walk(d: Path) -> None:
+        if is_corpus(d):
+            samples = discover(d)
+            metas = [s.meta for s in samples]
+            out.append(
+                CorpusInfo(
+                    path=str(d),
+                    kind=kind_of(d),
+                    count=len(samples),
+                    sources=sorted({m["source"] for m in metas if m.get("source")}),
+                    licenses=sorted({m["license"] for m in metas if m.get("license")}),
+                )
+            )
+            return
+        for child in sorted(d.iterdir()):
+            if child.is_dir():
+                walk(child)
+
+    walk(root)
+    return sorted(out, key=lambda c: c.path)
+
+
+def _confine(path: Path, root: Path) -> Path:
+    """Resolve ``path`` and require it to stay under ``root`` — refuse ``..`` and
+    absolute escapes. Returns the resolved path."""
+    root = root.resolve()
+    resolved = path.resolve()
+    if resolved != root and root not in resolved.parents:
+        raise ValueError(f"path escapes {root}: {path}")
+    return resolved
+
+
+def create_corpus(kind: str, name: str, root: Path = CORPUS_ROOT) -> Path:
+    """Create an empty corpus ``root/kind/name``. ``kind`` must be one of the two
+    known kinds and ``name`` a safe single path segment. Raises FileExistsError
+    if it already exists."""
+    if kind not in KINDS:
+        raise ValueError(f"kind must be one of {KINDS}, got {kind!r}")
+    if not name or "/" in name or "\\" in name or name in (".", ".."):
+        raise ValueError(f"invalid corpus name: {name!r}")
+    corpus_dir = Path(root) / kind / name
+    _confine(corpus_dir, Path(root))
+    if corpus_dir.exists():
+        raise FileExistsError(f"corpus already exists: {corpus_dir}")
+    corpus_dir.mkdir(parents=True)
+    return corpus_dir
+
+
+def next_sample_id(corpus_dir: Path) -> str:
+    """The next free zero-padded id (``0000`` scheme) for ``corpus_dir``."""
+    existing = [int(s.id) for s in discover(corpus_dir) if s.id.isdigit()]
+    return f"{(max(existing) + 1) if existing else 0:04d}"
+
+
+def add_sample(
+    corpus_dir: Path,
+    *,
+    image_bytes: bytes,
+    image_suffix: str,
+    reference_xml: str,
+    meta: dict,
+    validate: bool = True,
+) -> Sample:
+    """Author a new sample into ``corpus_dir`` from an uploaded image + ground
+    truth. ``validate`` parses the MusicXML (music21) so an unparseable ground
+    truth is rejected before it poisons scoring. Returns the created Sample."""
+    corpus_dir = Path(corpus_dir)
+    if not corpus_dir.is_dir():
+        raise FileNotFoundError(f"corpus dir not found: {corpus_dir}")
+    suffix = image_suffix.lower()
+    if suffix not in IMAGE_SUFFIXES:
+        raise ValueError(f"image suffix must be one of {IMAGE_SUFFIXES}, got {suffix!r}")
+    if validate:
+        _validate_musicxml(reference_xml)
+
+    sample_id = next_sample_id(corpus_dir)
+    sample_dir = corpus_dir / sample_id
+    sample_dir.mkdir()
+    (sample_dir / f"image{suffix}").write_bytes(image_bytes)
+    (sample_dir / "reference.musicxml").write_text(reference_xml)
+    (sample_dir / "meta.yaml").write_text(yaml.safe_dump(meta, sort_keys=True))
+    return Sample(id=sample_id, dir=sample_dir)
+
+
+def copy_sample(corpus_dir: Path, src: Sample) -> Sample:
+    """Curate: copy ``src`` (image + reference + meta) into ``corpus_dir`` under a
+    fresh id. The meta is copied verbatim so its license/source ride along
+    unchanged — eval-only stays eval-only. The caller is responsible for any
+    kind-match policy."""
+    corpus_dir = Path(corpus_dir)
+    if not corpus_dir.is_dir():
+        raise FileNotFoundError(f"corpus dir not found: {corpus_dir}")
+    if not src.reference_musicxml.is_file():
+        raise FileNotFoundError(f"source sample has no reference: {src.dir}")
+
+    sample_id = next_sample_id(corpus_dir)
+    sample_dir = corpus_dir / sample_id
+    sample_dir.mkdir()
+    image = src.image
+    if image is not None:
+        shutil.copy(image, sample_dir / f"image{image.suffix.lower()}")
+    shutil.copy(src.reference_musicxml, sample_dir / "reference.musicxml")
+    (sample_dir / "meta.yaml").write_text(yaml.safe_dump(src.meta, sort_keys=True))
+    return Sample(id=sample_id, dir=sample_dir)
+
+
+def remove_sample(corpus_dir: Path, sample_id: str, root: Path = CORPUS_ROOT) -> None:
+    """Delete one sample directory. Irreversible."""
+    sample_dir = _confine(Path(corpus_dir) / sample_id, Path(root))
+    if not sample_dir.is_dir():
+        raise FileNotFoundError(f"sample not found: {sample_dir}")
+    shutil.rmtree(sample_dir)
+
+
+def delete_corpus(corpus_dir: Path, root: Path = CORPUS_ROOT) -> None:
+    """Delete a whole corpus directory. Irreversible."""
+    target = _confine(Path(corpus_dir), Path(root))
+    if not target.is_dir():
+        raise FileNotFoundError(f"corpus not found: {target}")
+    shutil.rmtree(target)
+
+
+def _validate_musicxml(xml: str) -> None:
+    """Best-effort: parse with music21 so unparseable ground truth is caught at
+    upload. music21 is a core dep but heavy, so import it lazily."""
+    from music21 import converter
+
+    try:
+        converter.parseData(xml)
+    except Exception as exc:  # music21 raises a zoo of types
+        raise ValueError(f"reference MusicXML did not parse: {exc}") from exc

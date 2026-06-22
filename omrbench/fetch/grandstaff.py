@@ -1,8 +1,8 @@
-"""Fetch the GrandStaff Tier-1 synthetic corpus into omrbench layout.
+"""Fetch the GrandStaff synthetic corpus into omrbench layout.
 
 GrandStaff (Ríos-Vila et al.) is a large set of *engraved* pianoform excerpts
 with Humdrum ``**kern`` ground truth and matching rendered images. Because the
-images are rendered from the encoding rather than scanned, it lands in Tier 1 —
+images are rendered from the encoding rather than scanned, it is synthetic —
 optimistic, cheap, and large.
 
 The ground truth ships as ``**kern`` only. The default ``music21`` metric
@@ -78,7 +78,6 @@ def fetch(dest: Path, limit: int = 200, seed: int = 0, source_dir: Path | None =
         (sample_dir / "meta.yaml").write_text(
             yaml.safe_dump(
                 {
-                    "tier": "tier1_synthetic",
                     "source": "grandstaff",
                     "type": "engraved",
                     "origin": str(krn.relative_to(source)),

@@ -1,7 +1,7 @@
-"""Fetch the btrkeks/polish-scores Tier-2 corpus into omrbench layout.
+"""Fetch the btrkeks/polish-scores real corpus into omrbench layout.
 
 112 real historical scans with dual ground truth (MusicXML + **kern), openly
-downloadable, license "evaluation only — do not train". See corpus/tier2_real/
+downloadable, license "evaluation only — do not train". See corpus/real/
 README for the propagated restriction.
 
 The HF column names are auto-detected (the card does not pin them), so this is
@@ -63,7 +63,6 @@ def fetch(dest: Path, split: str = "test") -> int:
         (sample_dir / "meta.yaml").write_text(
             yaml.safe_dump(
                 {
-                    "tier": "tier2_real",
                     "source": "btrkeks/polish-scores",
                     "type": "real_scan",
                     "license": _LICENSE_NOTE,

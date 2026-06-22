@@ -10,7 +10,7 @@ from omrbench.score.report import RECORD_SCHEMA_VERSION, Report
 def _report():
     return Report(
         metric=Music21Metric(),
-        corpus="corpus/tier2_real/polish_scores",
+        corpus="corpus/real/polish_scores",
         samples=[
             SampleResult("0000", ok=True, fields=_fields(1, 4)),  # ser 0.25
             SampleResult("0001", ok=True, fields=_fields(3, 4)),  # ser 0.75
@@ -32,14 +32,14 @@ def test_to_record_schema_and_counts():
     record = _report().to_record(
         engine="homr",
         engine_version="0.6.0",
-        tier="tier2_real",
+        kind="real",
         date="2026-06-18T00:00:00+00:00",
     )
     assert record["schema_version"] == RECORD_SCHEMA_VERSION
     assert record["engine"] == "homr"
     assert record["engine_version"] == "0.6.0"
     assert record["metric"] == "music21"
-    assert record["tier"] == "tier2_real"
+    assert record["kind"] == "real"
 
     summary = record["summary"]
     assert summary["samples_total"] == 3

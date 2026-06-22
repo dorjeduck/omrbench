@@ -1,15 +1,15 @@
-"""Image degradation for Tier-1 corpora — robustness probing, engine-free.
+"""Image degradation for synthetic corpora — robustness probing, engine-free.
 
 `augment_corpus` reads a corpus and writes a *new* sibling corpus whose images
 have been degraded, copying each sample's ``reference.musicxml`` unchanged and
 recording the applied degradations in ``meta.yaml``. It never mutates the source
 and never mixes degraded with clean output — keep the result in its own corpus
-dir and report it separately (it stays the same tier as its source).
+dir and report it separately (it stays the same kind as its source).
 
 This is deliberately *not* a resolution fix: every degradation here makes the
 image harder, not sharper. It measures how an engine's accuracy holds up under
 realistic scan artifacts, which is what lets the otherwise-optimistic synthetic
-tier earn its keep.
+corpora earn their keep.
 
 The transforms are Pillow-only and deterministic: given a seed, the same corpus
 augments to byte-identical images, and a sample's randomness is derived from the

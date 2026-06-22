@@ -91,7 +91,7 @@ class Report:
         self,
         engine: str,
         engine_version: str | None,
-        tier: str | None,
+        kind: str | None,
         date: str,
     ) -> dict:
         """A self-describing result record: metadata + aggregates + every
@@ -103,7 +103,7 @@ class Report:
             "engine_version": engine_version,
             "metric": self.metric.name,
             "corpus": self.corpus,
-            "tier": tier,
+            "kind": kind,
             "date": date,
             "summary": self._summary_dict(),
             "samples": self._samples_list(),

@@ -1,7 +1,7 @@
-# Tier 2 — real-scan corpus
+# real-scan corpus
 
 Hand-verified transcriptions of **real** documents (scans/photos), with
-authentic degradation. This is the tier that predicts real-world quality.
+authentic degradation. This is the kind that predicts real-world quality.
 
 Layout per sample:
 

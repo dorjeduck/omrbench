@@ -10,6 +10,6 @@ __pycache__/
 # Generated runs (predictions + cached scores) and downloaded corpora are not
 # checked in.
 /runs/
-/corpus/tier2_real/polish_scores/
-/corpus/tier1_synthetic/grandstaff/
+/corpus/real/polish_scores/
+/corpus/synthetic/grandstaff/
 /datasets/

@@ -13,14 +13,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Only needed to download the polish-scores Tier-2 corpus.
+# Only needed to download the polish-scores real corpus.
 fetch = ["datasets>=2.18", "huggingface_hub>=0.23", "pillow>=10.0"]
 # Only needed for `--metric omr-ned`; musicdiff pulls in converter21 + numpy.
 omr-ned = ["musicdiff>=5.2"]
 # Only needed for the local web UI (`omrbench serve`). The frontend (Verovio,
 # Chart.js) loads from CDN in the browser, so no extra Python deps for it.
-serve = ["fastapi>=0.110", "uvicorn>=0.29"]
-# Only needed for `omrbench augment` (Tier-1 image degradation).
+# python-multipart backs the corpus sample-upload form.
+serve = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
+# Only needed for `omrbench augment` (synthetic-corpus image degradation).
 augment = ["pillow>=10.0"]
 # Only needed to run the test suite (`pytest`); augment tests need Pillow.
 dev = ["pytest>=8.0", "pillow>=10.0"]

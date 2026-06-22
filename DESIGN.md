@@ -9,7 +9,7 @@ Today predictions are keyed by **engine name** (`predictions/<engine>/`) and
 scoring is a separate CLI step that re-states the engine *and* the corpus:
 
 ```
-omrbench score --engine homr --corpus corpus/tier2_real/polish_scores
+omrbench score --engine homr --corpus corpus/real/polish_scores
 ```
 
 This is backwards:
@@ -35,8 +35,8 @@ per engine, and `runs/` is the only new top-level dir — it absorbs both the ol
 
 ```
 corpus/                                  # ground truth (unchanged)
-  tier1_synthetic/grandstaff/<id>/{image.*, reference.musicxml, meta.yaml}
-  tier2_real/polish_scores/<id>/{image.*, reference.musicxml, meta.yaml}
+  synthetic/grandstaff/<id>/{image.*, reference.musicxml, meta.yaml}
+  real/polish_scores/<id>/{image.*, reference.musicxml, meta.yaml}
 
 runs/                                    # NEW — replaces predictions/ and results/
   <run-id>/                              # e.g. homr-0.6.1-20260614T211232Z

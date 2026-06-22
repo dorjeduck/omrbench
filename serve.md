@@ -29,7 +29,7 @@ Open the printed URL in a browser. Stop with `Ctrl-C`.
 ## What you can do
 
 **Runs** (landing page)
-A table of every run under `runs/`: date, engine, version, corpus, tier, samples
+A table of every run under `runs/`: date, engine, version, corpus, kind, samples
 scored, and the headline (size-weighted) SER. Click a row to open the run.
 
 **Run detail**

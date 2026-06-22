@@ -85,7 +85,7 @@ def _make_corpus(root, ids=("0000", "0001")):
         d.mkdir(parents=True)
         _checkerboard().save(d / "image.png")
         (d / "reference.musicxml").write_text(f"<score id='{sid}'/>")
-        (d / "meta.yaml").write_text(yaml.safe_dump({"tier": "tier1_synthetic", "source": "x"}))
+        (d / "meta.yaml").write_text(yaml.safe_dump({"type": "engraved", "source": "x"}))
     return root
 
 
@@ -105,7 +105,7 @@ def test_augment_corpus_writes_parallel_corpus(tmp_path):
         assert meta["augmented_from"] == str(src)
         assert meta["augment_seed"] == 7
         # original meta fields preserved
-        assert meta["tier"] == "tier1_synthetic"
+        assert meta["type"] == "engraved"
 
 
 def test_augment_corpus_does_not_mutate_source(tmp_path):

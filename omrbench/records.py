@@ -13,15 +13,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from omrbench.corpus import Sample
+from omrbench import corpus as corpus_mod
+from omrbench.corpus import Sample, discover
 from omrbench.runs import Run, list_runs as _list_runs, load_run as _load_run
-
-
-def _tier_of(corpus: str) -> str | None:
-    for part in Path(corpus).parts:
-        if part.startswith("tier"):
-            return part
-    return None
 
 
 @dataclass
@@ -33,7 +27,7 @@ class RunMeta:
     engine: str
     engine_version: str | None
     corpus: str
-    tier: str | None
+    kind: str | None
     date: str
     metrics: list[str]          # cached metric names for this run
     summaries: dict             # metric -> summary dict
@@ -59,7 +53,7 @@ def _meta(run: Run) -> RunMeta:
         engine=run.engine,
         engine_version=run.engine_version,
         corpus=run.corpus,
-        tier=_tier_of(run.corpus),
+        kind=corpus_mod.kind_of(run.corpus),
         date=run.date,
         metrics=metrics,
         summaries=summaries,
@@ -129,4 +123,44 @@ def case_paths(run_id: str, sample_id: str) -> CasePaths:
         image=image,
         reference=reference if reference.is_file() else None,
         prediction=prediction if prediction.is_file() else None,
+    )
+
+
+# --- corpus reads ----------------------------------------------------------
+
+
+def list_corpora() -> list[corpus_mod.CorpusInfo]:
+    """Every corpus under the ``corpus/`` tree, summarised."""
+    return corpus_mod.list_corpora()
+
+
+def corpus_detail(corpus_id: str) -> dict:
+    """One corpus's header plus its samples (id + what files each has + meta)."""
+    corpus_dir = Path(corpus_id)
+    samples = discover(corpus_dir)  # raises FileNotFoundError if absent
+    return {
+        "path": str(corpus_dir),
+        "kind": corpus_mod.kind_of(corpus_dir),
+        "samples": [
+            {
+                "id": s.id,
+                "has_image": s.image is not None,
+                "has_reference": s.reference_musicxml.is_file(),
+                "meta": s.meta,
+            }
+            for s in samples
+        ],
+    }
+
+
+def corpus_sample_paths(corpus_id: str, sample_id: str) -> CasePaths:
+    """The image + reference for one corpus sample (no prediction). Each is None
+    when absent."""
+    sample = Sample(id=sample_id, dir=Path(corpus_id) / sample_id)
+    reference = sample.reference_musicxml
+    image = sample.image if sample.dir.is_dir() else None
+    return CasePaths(
+        image=image,
+        reference=reference if reference.is_file() else None,
+        prediction=None,
     )

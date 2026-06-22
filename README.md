@@ -27,13 +27,13 @@ adapters/ "images -> MusicXML" subprocess wrappers, 1 per engine
 score/    MusicXML-vs-MusicXML, imports no engine
 ```
 
-## Corpus tiers (reported separately, never mixed)
+## Corpus kinds (reported separately, never mixed)
 
-- **Tier 1 — synthetic**: engraved scores with encoded ground truth. Ground
+- **synthetic**: engraved scores with encoded ground truth. Ground
   truth is exact and free. Cheap to scale but optimistic vs real-world scans —
   `omrbench augment` can degrade the images (blur/rotate/noise/JPEG) to probe how
   far that optimism holds.
-- **Tier 2 — real scans**: hand-verified transcriptions of real documents.
+- **real scans**: hand-verified transcriptions of real documents.
   Predictive of actual quality, but limited in size. Seeded from
   [`btrkeks/polish-scores`](https://huggingface.co/datasets/btrkeks/polish-scores)
   (112 historical scans, dual MusicXML/**kern ground truth, **evaluation-only**).
@@ -55,23 +55,23 @@ pip install -e '.[augment]' # + corpus image degradation (omrbench augment)
 
 ```bash
 # 1. get a corpus
-omrbench fetch polish-scores               # Tier 2 -> corpus/tier2_real/polish_scores/
-omrbench fetch grandstaff --limit 200      # Tier 1 -> corpus/tier1_synthetic/grandstaff/
+omrbench fetch polish-scores               # real -> corpus/real/polish_scores/
+omrbench fetch grandstaff --limit 200      # synthetic -> corpus/synthetic/grandstaff/
 
 # 2. run an engine declared in omrbench.toml (see "Engines" below) -> a new run
-omrbench run --engine homr --corpus corpus/tier2_real/polish_scores
+omrbench run --engine homr --corpus corpus/real/polish_scores
 #   prints the run id, e.g.  homr-20260614T210837Z
 
 # 3. score that run (engine + corpus come from the run; no need to restate them)
 omrbench score homr-20260614T210837Z
 ```
 
-To probe robustness, write a degraded copy of a Tier-1 corpus and run against it
-(reported separately — it stays the same tier as its source):
+To probe robustness, write a degraded copy of a synthetic corpus and run against
+it (reported separately — it stays the same kind as its source):
 
 ```bash
-omrbench augment --corpus corpus/tier1_synthetic/grandstaff \
-                 --out    corpus/tier1_synthetic/grandstaff_blur \
+omrbench augment --corpus corpus/synthetic/grandstaff \
+                 --out    corpus/synthetic/grandstaff_blur \
                  --blur 1.2 --rotate 2 --noise 12 --jpeg 45 --seed 1
 ```
 
@@ -119,7 +119,7 @@ cwd     = "/path/to/homr-v0.6"
 ```
 
 ```bash
-omrbench run   --engine homr --version 0.6.0 --corpus corpus/tier2_real/polish_scores
+omrbench run   --engine homr --version 0.6.0 --corpus corpus/real/polish_scores
 omrbench score <run-id>        # the run id that `run` printed
 ```
 

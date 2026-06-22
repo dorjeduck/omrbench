@@ -35,11 +35,12 @@ needs only a run id. (`predictions/` and `results/` are the retired old layout.)
 
 ## Corpus discipline
 
-- **Two tiers, never mixed in a report.** `corpus/tier1_synthetic/` (rendered
-  from known-good MusicXML — exact, free, *optimistic*) and `corpus/tier2_real/`
+- **Two kinds, never mixed in a report.** `corpus/synthetic/` (rendered
+  from known-good MusicXML — exact, free, *optimistic*) and `corpus/real/`
   (real scans, hand-verified — predictive, precious). Reporting them together
-  hides the optimism in synthetic numbers.
-- **Eval-only data stays eval-only.** The Tier-2 seed `btrkeks/polish-scores` is
+  hides the optimism in synthetic numbers. A corpus's kind is its top folder
+  (`synthetic`/`real`), derived from the path — not stored in `meta.yaml`.
+- **Eval-only data stays eval-only.** The real seed `btrkeks/polish-scores` is
   *evaluation only — never training*. That restriction is propagated into every
   sample's `meta.yaml` and stated in `LICENSE`. Do not weaken it.
 - Downloaded/large corpus data is git-ignored (see `.gitignore`); fetch locally,
@@ -81,7 +82,7 @@ pip install -e '.[fetch]'   # + dataset download (datasets, huggingface_hub)
 pip install -e '.[omr-ned]' # + the omr-ned metric (musicdiff)
 
 omrbench fetch polish-scores
-omrbench run   --engine homr --version 0.6.1 --corpus corpus/tier2_real/polish_scores  # -> a run id
+omrbench run   --engine homr --version 0.6.1 --corpus corpus/real/polish_scores  # -> a run id
 omrbench score <run-id>                       # engine + corpus come from run.json
 omrbench score <run-id> --metric omr-ned
 omrbench score                                # score every run missing that metric

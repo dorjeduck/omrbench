@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -103,6 +103,122 @@ def create_app() -> FastAPI:
         _open_in_default_app(_resolve(run_id, sample_id, side))
         return {"ok": True}
 
+    # --- corpora (read-write) ----------------------------------------------
+    # Unlike the run routes above, these mutate the corpus/ tree (create dirs,
+    # write/delete files). They call omrbench.corpus directly — engine-free —
+    # the same way delete_run calls omrbench.runs. A corpus is identified by its
+    # path (e.g. "corpus/real/polish_scores"), passed as a query param so
+    # its slashes don't fight the router.
+
+    @app.get("/api/corpora")
+    def corpora() -> list[dict]:
+        return [asdict(c) for c in records.list_corpora()]
+
+    @app.get("/api/corpora/detail")
+    def corpus_detail(corpus_id: str = Query(...)) -> dict:
+        try:
+            return records.corpus_detail(corpus_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/corpora")
+    def create_corpus(kind: str = Form(...), name: str = Form(...)) -> dict:
+        from omrbench import corpus
+
+        try:
+            path = corpus.create_corpus(kind, name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except FileExistsError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"path": str(path)}
+
+    @app.delete("/api/corpora")
+    def delete_corpus(corpus_id: str = Query(...)) -> dict:
+        from omrbench import corpus
+
+        try:
+            corpus.delete_corpus(Path(corpus_id))
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True}
+
+    @app.post("/api/corpora/samples/upload")
+    def upload_sample(
+        corpus_id: str = Query(...),
+        image: UploadFile = File(...),
+        reference: str = Form(...),
+        source: str = Form(""),
+        type: str = Form(""),
+        license: str = Form(""),
+    ) -> dict:
+        from omrbench import corpus
+
+        suffix = Path(image.filename or "").suffix or ".png"
+        # The kind (synthetic/real) is the corpus's folder, not a meta field.
+        meta = {key: val for key, val in (("source", source), ("type", type), ("license", license)) if val}
+        try:
+            sample = corpus.add_sample(
+                Path(corpus_id),
+                image_bytes=image.file.read(),
+                image_suffix=suffix,
+                reference_xml=reference,
+                meta=meta,
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"id": sample.id}
+
+    @app.post("/api/corpora/samples/curate")
+    def curate_sample(
+        corpus_id: str = Query(...),
+        from_corpus: str = Form(...),
+        from_sample_id: str = Form(...),
+    ) -> dict:
+        from omrbench import corpus
+        from omrbench.corpus import Sample
+
+        src = Sample(id=from_sample_id, dir=Path(from_corpus) / from_sample_id)
+        # The two kinds (synthetic/real) must never be mixed in one corpus
+        # (CLAUDE.md): refuse a source whose kind differs from this corpus's.
+        target_kind = corpus.kind_of(corpus_id)
+        src_kind = corpus.kind_of(from_corpus)
+        if src_kind and target_kind and src_kind != target_kind:
+            raise HTTPException(
+                status_code=400,
+                detail=f"kind mismatch: sample is {src_kind}, corpus is {target_kind}",
+            )
+        try:
+            sample = corpus.copy_sample(Path(corpus_id), src)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {"id": sample.id}
+
+    @app.delete("/api/corpora/samples")
+    def delete_sample(corpus_id: str = Query(...), sample_id: str = Query(...)) -> dict:
+        from omrbench import corpus
+
+        try:
+            corpus.remove_sample(Path(corpus_id), sample_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True}
+
+    @app.get("/api/corpora/file/image")
+    def corpus_image(corpus_id: str = Query(...), sample_id: str = Query(...)) -> FileResponse:
+        return FileResponse(_safe(records.corpus_sample_paths(corpus_id, sample_id).image))
+
+    @app.get("/api/corpora/file/musicxml")
+    def corpus_musicxml(corpus_id: str = Query(...), sample_id: str = Query(...)) -> FileResponse:
+        path = _safe(records.corpus_sample_paths(corpus_id, sample_id).reference)
+        return FileResponse(path, media_type="application/xml")
+
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
     return app
 
@@ -110,16 +226,21 @@ def create_app() -> FastAPI:
 _SIDES = {"reference": "reference", "prediction": "prediction", "image": "image"}
 
 
-def _resolve(run_id: str, sample_id: str, side: str) -> Path:
-    """The on-disk file for one case+side, guarded against path traversal."""
-    paths = records.case_paths(run_id, sample_id)
-    path = getattr(paths, _SIDES[side])
+def _safe(path: Path | None) -> Path:
+    """A file that exists and lives under cwd, or an HTTP error. The one guard
+    against path traversal for every file the server hands out."""
     if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="file not found")
     resolved = path.resolve()
     if Path.cwd() not in resolved.parents:
         raise HTTPException(status_code=403, detail="forbidden")
     return resolved
+
+
+def _resolve(run_id: str, sample_id: str, side: str) -> Path:
+    """The on-disk file for one case+side, guarded against path traversal."""
+    paths = records.case_paths(run_id, sample_id)
+    return _safe(getattr(paths, _SIDES[side]))
 
 
 def _open_in_default_app(path: Path) -> None:
