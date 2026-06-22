@@ -627,25 +627,38 @@ async function viewCorpus(corpusId) {
   }
   const tbody = el("tbody");
   const checkedIds = () => [...tbody.querySelectorAll("input.pick:checked")].map((cb) => cb.value);
+  const delSelected = el("button", { class: "danger", onclick: () => deleteSamples(checkedIds()) }, "Delete selected");
   app.append(el("div", { class: "filters" },
     el("span", { class: "muted" }, "Tick samples, then "),
-    copyToCorpusControl(corpusId, detail.kind, checkedIds, () => viewCorpus(corpusId))));
+    copyToCorpusControl(corpusId, detail.kind, checkedIds, () => viewCorpus(corpusId)),
+    delSelected));
   const thead = el("thead", {}, el("tr", {},
     el("th", {}), el("th", {}, "Sample"), el("th", {}, "Reference"), el("th", {}, "Source"), el("th", {})));
   app.append(el("div", { class: "card" }, el("table", {}, thead, tbody)));
 
-  async function onDelete(s) {
-    if (!confirm(`Delete sample ${s.id} from ${detail.path}?\n\nNot recoverable.`)) return;
-    const r = await fetch(`/api/corpora/samples?corpus_id=${encodeURIComponent(corpusId)}&sample_id=${encodeURIComponent(s.id)}`, { method: "DELETE" });
-    if (!r.ok) return alert(`could not delete: ${(await r.json().catch(() => ({}))).detail || r.statusText}`);
-    samples.splice(samples.indexOf(s), 1);
+  // One deleter for both the per-row 🗑 and "Delete selected".
+  async function deleteSamples(ids) {
+    if (!ids.length) return alert("tick the samples to delete first");
+    if (!confirm(`Delete ${ids.length} sample${ids.length > 1 ? "s" : ""} from ${detail.path}?\n\nNot recoverable.`)) return;
+    const errs = [];
+    for (const id of ids) {
+      const r = await fetch(`/api/corpora/samples?corpus_id=${encodeURIComponent(corpusId)}&sample_id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (r.ok) { const s = samples.find((x) => x.id === id); if (s) samples.splice(samples.indexOf(s), 1); }
+      else errs.push(`${id}: ${(await r.json().catch(() => ({}))).detail || r.statusText}`);
+    }
+    if (errs.length) alert(`some deletes failed:\n${errs.join("\n")}`);
     draw();
   }
   function draw() {
     tbody.innerHTML = "";
+    delSelected.disabled = !samples.length;
+    if (!samples.length) {
+      tbody.append(el("tr", {}, el("td", { colspan: "5", class: "muted" }, "no samples left")));
+      return;
+    }
     samples.forEach((s) => {
       const del = el("button", { class: "del", title: "delete this sample",
-        onclick: (e) => { e.stopPropagation(); onDelete(s); } }, "🗑");
+        onclick: (e) => { e.stopPropagation(); deleteSamples([s.id]); } }, "🗑");
       const pick = el("td", { onclick: (e) => e.stopPropagation() },
         el("input", { class: "pick", type: "checkbox", value: s.id }));
       tbody.append(el("tr", { class: "clickable",

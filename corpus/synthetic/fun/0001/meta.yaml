@@ -1,0 +1,5 @@
+license: "GrandStaff dataset (R\xEDos-Vila et al., University of Alicante); see https://sites.google.com/view/multiscore-project/datasets\
+  \ for terms"
+origin: beethoven/piano-sonatas/sonata21-3/maj2_down_m-493-496.krn
+source: grandstaff
+type: engraved

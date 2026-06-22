@@ -74,6 +74,8 @@ textarea { margin-bottom: 0.6rem; font-family: ui-monospace, monospace; }
 .meta-list dd { margin: 0; }
 button.del { padding: 0.1rem 0.4rem; border-color: transparent; color: var(--muted); cursor: pointer; }
 button.del:hover { color: #c0392b; border-color: #c0392b; }
+button.danger { color: var(--bad); border-color: var(--bad); cursor: pointer; }
+button.danger:disabled { opacity: 0.5; cursor: default; }
 .score-actions { display: inline-flex; gap: 0.4rem; }
 .score-actions button { cursor: pointer; }
 .score-actions button:disabled { opacity: 0.6; cursor: default; }
