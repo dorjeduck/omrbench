@@ -99,11 +99,11 @@ def kind_of(path: str | Path) -> str | None:
 
 @dataclass
 class CorpusInfo:
-    """One corpus for the listing: its path (the id used everywhere), its kind,
-    how many samples it holds, and a small summary of their provenance."""
+    """One corpus for the listing: its path (the id used everywhere), how many
+    samples it holds, and a small summary of their provenance. (kind is a
+    per-sample tag, not a corpus-level one — a corpus may mix kinds.)"""
 
     path: str
-    kind: str | None
     count: int
     sources: list[str] = field(default_factory=list)
     licenses: list[str] = field(default_factory=list)
@@ -145,7 +145,6 @@ def list_corpora(root: Path = CORPORA_ROOT) -> list[CorpusInfo]:
             out.append(
                 CorpusInfo(
                     path=str(d),
-                    kind=kind_of(d),
                     count=len(samples),
                     sources=sorted({m["source"] for m in metas if m.get("source")}),
                     licenses=sorted({m["license"] for m in metas if m.get("license")}),

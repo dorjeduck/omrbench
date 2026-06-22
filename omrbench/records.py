@@ -138,7 +138,6 @@ def corpus_detail(corpus_id: str) -> dict:
     samples = discover(corpus_dir)  # raises FileNotFoundError if absent
     return {
         "path": str(corpus_dir),
-        "kind": corpus_mod.kind_of(corpus_dir),
         "samples": [
             {
                 "id": s.id,

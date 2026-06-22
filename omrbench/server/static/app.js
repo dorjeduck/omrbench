@@ -109,10 +109,11 @@ function runWarning(r) {
 }
 
 function runRow(r, metric, onDelete) {
-  // The score column follows the selected metric; "—" if this run lacks it.
+  // `metric` is the metric whose value fills the score cell. Rows reaching here
+  // either have it (when a specific metric is filtered) or we're showing the
+  // default; "—" means this run wasn't scored with it.
   const s = r.summaries?.[metric];
   const h = s ? headline(s) : null;
-  const scored = s ? `${s.samples_scored ?? "?"}/${s.samples_total ?? "?"}` : "—";
   const del = el("button", {
     class: "del", title: "delete this run",
     onclick: (e) => { e.stopPropagation(); onDelete(r); },  // don't navigate on delete
@@ -123,8 +124,7 @@ function runRow(r, metric, onDelete) {
     el("td", {}, r.engine),
     el("td", {}, r.engine_version || "—"),
     el("td", {}, corpusName(r.corpus)),
-    el("td", { class: "num" }, scored),
-    el("td", { class: "num" }, h ? pct(h.value) : "—"),
+    el("td", { class: "num" }, s ? (h ? pct(h.value) : "scored") : "—"),
     el("td", { class: "num" }, del));
 }
 
@@ -136,34 +136,32 @@ async function viewRuns() {
     return;
   }
 
-  // Engine and corpus are filters on top of the one runs list; the metric picker
-  // (cached metrics only) drives the score column.
+  // One table per metric — no metric lens to puzzle over: each table is titled
+  // by its metric and its score column is that metric. A run appears under every
+  // metric it has been scored with. Engine and corpus are filters across all
+  // tables. music21 (the cheap default every run gets) is shown first.
   const distinct = (key) => [...new Set(runs.map((r) => r[key]))].sort();
-  const metrics = [...new Set(runs.flatMap((r) => Object.keys(r.summaries || {})))].sort();
+  let metrics = [...new Set(runs.flatMap((r) => r.metrics || []))].sort();
   if (!metrics.length) metrics.push("music21");
+  if (metrics.includes("music21")) metrics = ["music21", ...metrics.filter((m) => m !== "music21")];
   let fEngine = "all", fCorpus = "all";
-  let fMetric = metrics.includes(currentMetric) ? currentMetric
-    : metrics.includes("music21") ? "music21" : metrics[0];
+  let fMetric = metrics.includes(currentMetric) ? currentMetric : "all";
 
-  const select = (opts, onpick, withAll) => {
+  const filterSelect = (opts, value, onpick) => {
     const s = el("select", { onchange: (e) => onpick(e.target.value) });
-    if (withAll) s.append(el("option", { value: "all" }, "All"));
+    s.append(el("option", { value: "all" }, "All"));
     opts.forEach((o) => s.append(el("option", { value: o }, o)));
-    if (!withAll) s.value = fMetric;
+    s.value = value;
     return s;
   };
   const filters = el("div", { class: "filters" },
-    el("label", {}, "Engine ", select(distinct("engine"), (v) => { fEngine = v; draw(); }, true)),
-    el("label", {}, "Corpus ", select(distinct("corpus"), (v) => { fCorpus = v; draw(); }, true)),
-    el("label", {}, "Metric ", select(metrics, (v) => { fMetric = currentMetric = v; draw(); }, false)));
+    el("span", { class: "muted" }, "Filter:"),
+    el("label", {}, "engine ", filterSelect(distinct("engine"), fEngine, (v) => { fEngine = v; draw(); })),
+    el("label", {}, "corpus ", filterSelect(distinct("corpus"), fCorpus, (v) => { fCorpus = v; draw(); })),
+    el("label", {}, "metric ", filterSelect(metrics, fMetric, (v) => { fMetric = currentMetric = v; draw(); })));
 
-  const scoreTh = el("th", { class: "num" }, `score (${fMetric})`);
-  const thead = el("thead", {}, el("tr", {},
-    el("th", {}, "Date"), el("th", {}, "Engine"), el("th", {}, "Version"),
-    el("th", {}, "Corpus"),
-    el("th", { class: "num" }, "Scored"), scoreTh, el("th", {})));
-  const tbody = el("tbody");
-  app.append(el("h2", {}, "Runs"), filters, el("div", { class: "card" }, el("table", {}, thead, tbody)));
+  const container = el("div", {});
+  app.append(el("h2", {}, "Runs"), filters, container);
 
   async function onDelete(r) {
     if (!confirm(`Delete run ${r.run_id}?\n\nThis removes its predictions and scores. Not recoverable without re-running.`)) return;
@@ -176,15 +174,28 @@ async function viewRuns() {
     draw();
   }
 
-  function draw() {
-    scoreTh.textContent = `score (${fMetric})`;
-    tbody.innerHTML = "";
+  function metricTable(metric) {
+    const thead = el("thead", {}, el("tr", {},
+      el("th", {}, "Date"), el("th", {}, "Engine"), el("th", {}, "Version"),
+      el("th", {}, "Corpus"), el("th", { class: "num" }, "score"), el("th", {})));
+    const tbody = el("tbody");
     const rows = runs.filter((r) =>
-      (fEngine === "all" || r.engine === fEngine) && (fCorpus === "all" || r.corpus === fCorpus));
+      (fEngine === "all" || r.engine === fEngine)
+      && (fCorpus === "all" || r.corpus === fCorpus)
+      && (r.metrics || []).includes(metric));
     if (!rows.length) {
-      tbody.append(el("tr", {}, el("td", { colspan: "7", class: "muted" }, "no runs match")));
+      tbody.append(el("tr", {}, el("td", { colspan: "6", class: "muted" }, "no runs match")));
     }
-    rows.forEach((r) => tbody.append(runRow(r, fMetric, onDelete)));
+    rows.forEach((r) => tbody.append(runRow(r, metric, onDelete)));
+    return el("div", { class: "card" },
+      el("h3", {}, METRICS[metric]?.title || metric),
+      el("table", {}, thead, tbody));
+  }
+
+  function draw() {
+    container.innerHTML = "";
+    const shown = fMetric === "all" ? metrics : [fMetric];
+    shown.forEach((m) => container.append(metricTable(m)));
   }
   draw();
 }
@@ -213,34 +224,60 @@ async function viewRun(runId, wantMetric) {
 
   function scoreActions() {
     if (!uncached.length) return null;
-    const box = el("span", { class: "score-actions" });
+    const box = el("div", { class: "card score-box" });
+    box.append(
+      el("h3", {}, "Score with another metric"),
+      el("p", { class: "muted" },
+        "Scores are computed on demand and then cached. omr-ned is slow: it runs "
+        + "musicdiff over every sample and can take a few minutes, and the page waits until it finishes."));
+    const row = el("div", { class: "score-actions" });
     uncached.forEach((m) => {
       const btn = el("button", {
+        class: "action",
         title: `compute ${m} for this run`,
         onclick: async () => {
           btn.disabled = true;
           btn.textContent = `scoring ${m}…`;
           try {
-            await getJSON(`/api/runs/${runId}/scores/${m}`);
+            await fetch(`/api/runs/${runId}/scores/${m}/start`, { method: "POST" });
           } catch (e) {
-            btn.disabled = false;
-            btn.textContent = `score ${m}`;
-            alert(`could not score ${m}: ${e.message}`);
+            btn.disabled = false; btn.textContent = `Score ${m}`;
+            alert(`could not start scoring ${m}: ${e.message}`);
             return;
           }
-          viewRun(runId, m);  // m is cached now; rebuild with it selected
+          // Poll progress until the background job finishes, then re-render with
+          // the now-cached metric selected.
+          const tick = async () => {
+            let p;
+            try {
+              p = await getJSON(`/api/runs/${runId}/scores/${m}/progress`);
+            } catch (e) {
+              btn.disabled = false; btn.textContent = `Score ${m}`;
+              alert(`lost track of scoring ${m}: ${e.message}`);
+              return;
+            }
+            if (p.status === "done") { viewRun(runId, m); return; }
+            if (p.status === "error") {
+              btn.disabled = false; btn.textContent = `Score ${m}`;
+              alert(`could not score ${m}: ${p.error}`);
+              return;
+            }
+            btn.textContent = p.total ? `scoring ${m}… ${p.done}/${p.total}` : `scoring ${m}…`;
+            setTimeout(tick, 1000);
+          };
+          tick();
         },
-      }, `score ${m}`);
-      box.append(btn);
+      }, `Score ${m}`);
+      row.append(btn);
     });
+    box.append(row);
     return box;
   }
 
   if (!cached.length) {
-    const card = el("div", { class: "card" }, el("p", { class: "muted" }, "Not scored yet."));
+    app.append(el("div", { class: "card" }, el("p", { class: "muted" }, "Not scored yet.")));
     const actions = scoreActions();
-    if (actions) card.append(el("div", { class: "filters" }, el("label", {}, "Score with ", actions)));
-    app.append(card);
+    if (actions) app.append(actions);
     return;
   }
   // Honour the metric carried from the landing (or last picked) if this run has
@@ -248,23 +285,29 @@ async function viewRun(runId, wantMetric) {
   let metric = cached.includes(wantMetric) ? wantMetric
     : cached.includes(currentMetric) ? currentMetric
     : cached.includes("music21") ? "music21" : cached[0];
-  const sel = el("select", { onchange: (e) => { currentMetric = e.target.value; renderScore(e.target.value); } });
-  cached.forEach((m) => sel.append(el("option", { value: m }, m)));
-  sel.value = metric;
+
+  // Three separate concerns, each on its own line and only when it applies:
+  // view (which scored metric to show), compare (go head-to-head), score
+  // (compute a metric this run lacks).
+  if (cached.length > 1) {
+    const sel = el("select", { onchange: (e) => { currentMetric = e.target.value; renderScore(e.target.value); } });
+    cached.forEach((m) => sel.append(el("option", { value: m }, m)));
+    sel.value = metric;
+    app.append(el("div", { class: "filters" }, el("label", {}, "Showing metric ", sel)));
+  }
 
   // Compare with: only runs on the same corpus sharing >=1 sample (server-filtered).
-  const cmp = el("select", {
-    onchange: (e) => { if (e.target.value) location.hash = `#/compare/${runId}/${e.target.value}/${metric}`; },
-  }, el("option", { value: "" }, "none"));
   const comparable = await getJSON(`/api/runs/${runId}/comparable`);
-  comparable.forEach((r) => cmp.append(el("option", { value: r.run_id }, runLabel(r))));
+  if (comparable.length) {
+    const cmp = el("select", {
+      onchange: (e) => { if (e.target.value) location.hash = `#/compare/${runId}/${e.target.value}/${metric}`; },
+    }, el("option", { value: "" }, "choose a run…"));
+    comparable.forEach((r) => cmp.append(el("option", { value: r.run_id }, runLabel(r))));
+    app.append(el("div", { class: "filters" }, el("label", {}, "Compare with ", cmp)));
+  }
 
-  const filters = el("div", { class: "filters" },
-    el("label", {}, "Metric ", sel),
-    el("label", {}, "Compare with ", cmp));
   const actions = scoreActions();
-  if (actions) filters.append(el("label", {}, "Score with ", actions));
-  app.append(filters);
+  if (actions) app.append(actions);
 
   const content = el("div", {});
   app.append(content);
@@ -348,11 +391,9 @@ async function viewCase(runId, sampleId) {
     el("a", { onclick: () => (location.hash = `#/runs/${runId}`) }, `${runLabel(meta)}`),
     ` sample ${sampleId}`));
 
-  // The ground truth here lives in the run's corpus; "Copy to corpus" lets you
-  // file a hard case into another corpus (e.g. a "troublemaker" set).
+  // The ground truth here lives in the run's corpus; offer to copy it elsewhere.
   if (meta.corpus)
     app.append(el("div", { class: "filters" },
-      el("span", { class: "muted" }, "Hard case? "),
       copyToCorpusControl(meta.corpus, () => [sampleId])));
 
   // per-sample numbers, from the run's score (computed on demand by the server)
@@ -579,7 +620,7 @@ async function viewCorpora() {
 
   const tbody = el("tbody");
   const thead = el("thead", {}, el("tr", {},
-    el("th", {}, "Corpus"), el("th", {}, "Kind"), el("th", { class: "num" }, "Samples"),
+    el("th", {}, "Corpus"), el("th", { class: "num" }, "Samples"),
     el("th", {}, "Source"), el("th", {})));
   app.append(el("div", { class: "card" }, el("table", {}, thead, tbody)));
 
@@ -597,7 +638,6 @@ async function viewCorpora() {
         onclick: (e) => { e.stopPropagation(); onDelete(c); } }, "🗑");
       tbody.append(el("tr", { class: "clickable", onclick: () => (location.hash = `#/corpora/${encodeURIComponent(c.path)}`) },
         el("td", {}, corpusName(c.path)),
-        el("td", {}, el("span", { class: "kind" }, c.kind || "—")),
         el("td", { class: "num" }, String(c.count)),
         el("td", {}, (c.sources || []).join(", ") || "—"),
         el("td", { class: "num" }, del)));
@@ -624,7 +664,6 @@ async function viewCorpus(corpusId) {
   const checkedIds = () => [...tbody.querySelectorAll("input.pick:checked")].map((cb) => cb.value);
   const delSelected = el("button", { class: "danger", onclick: () => deleteSamples(checkedIds()) }, "Delete selected");
   app.append(el("div", { class: "filters" },
-    el("span", { class: "muted" }, "Tick samples, then "),
     copyToCorpusControl(corpusId, checkedIds, () => viewCorpus(corpusId)),
     delSelected));
   const thead = el("thead", {}, el("tr", {},

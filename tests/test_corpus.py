@@ -195,7 +195,6 @@ def test_list_corpora_finds_leaf_corpus_dirs(tmp_path):
     by_path = {c.path: c for c in found}
     assert set(by_path) == {str(a), str(b)}
     assert by_path[str(a)].count == 2
-    assert by_path[str(a)].kind == "synthetic"
     assert by_path[str(a)].sources == ["alpha-src"]
 
 

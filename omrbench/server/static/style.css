@@ -47,6 +47,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .kind { font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 3px; background: #eee; color: #555; }
 
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1rem; margin-bottom: 1.2rem; }
+.card > h3 { margin: 0 0 0.7rem; font-size: 0.95rem; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
 .chart-box { position: relative; height: 280px; }
 
@@ -76,9 +77,13 @@ button.del { padding: 0.1rem 0.4rem; border-color: transparent; color: var(--mut
 button.del:hover { color: #c0392b; border-color: #c0392b; }
 button.danger { color: var(--bad); border-color: var(--bad); cursor: pointer; }
 button.danger:disabled { opacity: 0.5; cursor: default; }
-.score-actions { display: inline-flex; gap: 0.4rem; }
-.score-actions button { cursor: pointer; }
-.score-actions button:disabled { opacity: 0.6; cursor: default; }
+.score-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+button.action { background: var(--accent); color: #fff; border-color: var(--accent); cursor: pointer; font-weight: 600; }
+button.action:hover { filter: brightness(1.08); }
+button.action:disabled { opacity: 0.6; cursor: default; }
+.score-box { border-color: var(--accent); background: #f5f9ff; }
+.score-box h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
+.score-box p { margin: 0 0 0.7rem; }
 .warn { color: #c0392b; cursor: help; }
 tr.broken td { background: #fff6f5; }
 .broken-banner { border-color: #c0392b; background: #fff6f5; color: #922; }

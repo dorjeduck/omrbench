@@ -60,9 +60,31 @@ def create_app() -> FastAPI:
 
     @app.get("/api/runs/{run_id}/scores/{metric}")
     def score(run_id: str, metric: str) -> dict:
-        # Computed and cached on first request (on-demand scoring) — engine-free.
+        # Returns the cached score (computing it inline if missing). Cheap metrics
+        # only — the UI uses the async start/progress pair below for heavy ones.
         try:
             return records.ensure_score(run_id, metric)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"unknown metric: {metric}") from exc
+
+    @app.post("/api/runs/{run_id}/scores/{metric}/start")
+    def score_start(run_id: str, metric: str) -> dict:
+        # Kick off scoring in the background; the client polls /progress. Engine-free.
+        from omrbench.server import jobs
+        try:
+            return jobs.start(run_id, metric)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"unknown metric: {metric}") from exc
+
+    @app.get("/api/runs/{run_id}/scores/{metric}/progress")
+    def score_progress(run_id: str, metric: str) -> dict:
+        from omrbench.server import jobs
+        try:
+            return jobs.status(run_id, metric)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except KeyError as exc:
