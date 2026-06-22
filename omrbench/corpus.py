@@ -28,7 +28,7 @@ IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
 # is enforced on it. Also the folder names used by the seed fetchers, so a kind
 # can be inferred from a sample's path when its meta doesn't state one.
 KINDS = ("synthetic", "real")
-CORPUS_ROOT = Path("corpus")
+CORPORA_ROOT = Path("corpora")
 
 
 @dataclass
@@ -118,8 +118,8 @@ def _is_corpus_dir(d: Path) -> bool:
     return d.is_dir() and any(_is_sample_dir(c) for c in d.iterdir())
 
 
-def list_corpora(root: Path = CORPUS_ROOT) -> list[CorpusInfo]:
-    """Every corpus under ``root`` (the ``corpus/`` tree), each summarised. A
+def list_corpora(root: Path = CORPORA_ROOT) -> list[CorpusInfo]:
+    """Every corpus under ``root`` (the ``corpora/`` tree), each summarised. A
     directory counts as a corpus once it holds a sample (a child dir with a
     reference.musicxml); we do not descend into a corpus once found."""
     root = Path(root)
@@ -170,7 +170,7 @@ def _confine(path: Path, root: Path) -> Path:
     return resolved
 
 
-def create_corpus(name: str, root: Path = CORPUS_ROOT) -> Path:
+def create_corpus(name: str, root: Path = CORPORA_ROOT) -> Path:
     """Create an empty corpus ``root/name``. ``name`` must be a safe single path
     segment (and not a reserved kind-folder name). Raises FileExistsError if it
     already exists."""
@@ -246,7 +246,7 @@ def copy_sample(corpus_dir: Path, src: Sample) -> Sample:
     return Sample(id=sample_id, dir=sample_dir)
 
 
-def remove_sample(corpus_dir: Path, sample_id: str, root: Path = CORPUS_ROOT) -> None:
+def remove_sample(corpus_dir: Path, sample_id: str, root: Path = CORPORA_ROOT) -> None:
     """Delete one sample directory. Irreversible."""
     sample_dir = _confine(Path(corpus_dir) / sample_id, Path(root))
     if not sample_dir.is_dir():
@@ -254,7 +254,7 @@ def remove_sample(corpus_dir: Path, sample_id: str, root: Path = CORPUS_ROOT) ->
     shutil.rmtree(sample_dir)
 
 
-def delete_corpus(corpus_dir: Path, root: Path = CORPUS_ROOT) -> None:
+def delete_corpus(corpus_dir: Path, root: Path = CORPORA_ROOT) -> None:
     """Delete a whole corpus directory. Irreversible."""
     target = _confine(Path(corpus_dir), Path(root))
     if not target.is_dir():

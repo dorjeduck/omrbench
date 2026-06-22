@@ -26,6 +26,8 @@ const el = (tag, attrs = {}, ...kids) => {
 
 const pct = (v) => (v == null ? "—" : `${(100 * v).toFixed(2)}%`);
 const shortDate = (iso) => (iso || "").replace("T", " ").slice(0, 19);
+// A corpus is identified by its path (corpora/<name>); show just the name as a label.
+const corpusName = (p) => (p || "").replace(/^corpora\//, "");
 // One label for a run everywhere it's named: engine, version (the thing that
 // tells two runs of the same tool apart), then date.
 const runLabel = (m) => `${m.engine}${m.engine_version ? " " + m.engine_version : ""} @ ${shortDate(m.date)}`;
@@ -120,8 +122,7 @@ function runRow(r, metric, onDelete) {
     el("td", {}, shortDate(r.date), warn ? el("span", { class: "warn", title: warn }, " ⚠") : null),
     el("td", {}, r.engine),
     el("td", {}, r.engine_version || "—"),
-    el("td", {}, r.corpus),
-    el("td", {}, el("span", { class: "kind" }, r.kind || "—")),
+    el("td", {}, corpusName(r.corpus)),
     el("td", { class: "num" }, scored),
     el("td", { class: "num" }, h ? pct(h.value) : "—"),
     el("td", { class: "num" }, del));
@@ -159,7 +160,7 @@ async function viewRuns() {
   const scoreTh = el("th", { class: "num" }, `score (${fMetric})`);
   const thead = el("thead", {}, el("tr", {},
     el("th", {}, "Date"), el("th", {}, "Engine"), el("th", {}, "Version"),
-    el("th", {}, "Corpus"), el("th", {}, "Kind"),
+    el("th", {}, "Corpus"),
     el("th", { class: "num" }, "Scored"), scoreTh, el("th", {})));
   const tbody = el("tbody");
   app.append(el("h2", {}, "Runs"), filters, el("div", { class: "card" }, el("table", {}, thead, tbody)));
@@ -181,7 +182,7 @@ async function viewRuns() {
     const rows = runs.filter((r) =>
       (fEngine === "all" || r.engine === fEngine) && (fCorpus === "all" || r.corpus === fCorpus));
     if (!rows.length) {
-      tbody.append(el("tr", {}, el("td", { colspan: "8", class: "muted" }, "no runs match")));
+      tbody.append(el("tr", {}, el("td", { colspan: "7", class: "muted" }, "no runs match")));
     }
     rows.forEach((r) => tbody.append(runRow(r, fMetric, onDelete)));
   }
@@ -595,7 +596,7 @@ async function viewCorpora() {
       const del = el("button", { class: "del", title: "delete this corpus",
         onclick: (e) => { e.stopPropagation(); onDelete(c); } }, "🗑");
       tbody.append(el("tr", { class: "clickable", onclick: () => (location.hash = `#/corpora/${encodeURIComponent(c.path)}`) },
-        el("td", {}, c.path),
+        el("td", {}, corpusName(c.path)),
         el("td", {}, el("span", { class: "kind" }, c.kind || "—")),
         el("td", { class: "num" }, String(c.count)),
         el("td", {}, (c.sources || []).join(", ") || "—"),
@@ -610,7 +611,7 @@ async function viewCorpus(corpusId) {
   app.innerHTML = "";
   app.append(el("div", { class: "breadcrumb" },
     el("a", { onclick: () => (location.hash = "#/corpora") }, "Corpora"),
-    ` ${detail.path}`, el("span", { class: "kind" }, detail.kind || "—")));
+    ` ${corpusName(detail.path)}`));
 
   app.append(addSampleCard(corpusId, () => viewCorpus(corpusId)));
 
@@ -718,7 +719,7 @@ async function viewCorpusSample(corpusId, sampleId) {
   app.innerHTML = "";
   app.append(el("div", { class: "breadcrumb" },
     el("a", { onclick: () => (location.hash = "#/corpora") }, "Corpora"),
-    el("a", { onclick: () => (location.hash = `#/corpora/${encodeURIComponent(corpusId)}`) }, detail.path),
+    el("a", { onclick: () => (location.hash = `#/corpora/${encodeURIComponent(corpusId)}`) }, corpusName(detail.path)),
     ` sample ${sampleId}`));
 
   app.append(el("div", { class: "filters" }, copyToCorpusControl(corpusId, () => [sampleId])));

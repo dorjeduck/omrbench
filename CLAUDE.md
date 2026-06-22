@@ -87,7 +87,7 @@ pip install -e '.[fetch]'   # + dataset download (datasets, huggingface_hub)
 pip install -e '.[omr-ned]' # + the omr-ned metric (musicdiff)
 
 omrbench fetch polish-scores
-omrbench run   --engine homr --version 0.6.1 --corpus corpus/real/polish_scores  # -> a run id
+omrbench run   --engine homr --version 0.6.1 --corpus corpora/polish_scores  # -> a run id
 omrbench score <run-id>                       # engine + corpus come from run.json
 omrbench score <run-id> --metric omr-ned
 omrbench score                                # score every run missing that metric

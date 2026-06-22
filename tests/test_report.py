@@ -10,7 +10,7 @@ from omrbench.score.report import RECORD_SCHEMA_VERSION, Report
 def _report():
     return Report(
         metric=Music21Metric(),
-        corpus="corpus/real/polish_scores",
+        corpus="corpora/polish_scores",
         samples=[
             SampleResult("0000", ok=True, fields=_fields(1, 4)),  # ser 0.25
             SampleResult("0001", ok=True, fields=_fields(3, 4)),  # ser 0.75

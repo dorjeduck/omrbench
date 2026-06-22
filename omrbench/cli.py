@@ -23,14 +23,14 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
     if args.dataset == "polish-scores":
         from omrbench.fetch.polish_scores import fetch
 
-        dest = Path(args.dest) if args.dest else Path("corpus/real/polish_scores")
+        dest = Path(args.dest) if args.dest else Path("corpora/polish_scores")
         n = fetch(dest)
         print(f"wrote {n} samples to {dest}")
         return 0
     if args.dataset == "grandstaff":
         from omrbench.fetch.grandstaff import fetch
 
-        dest = Path(args.dest) if args.dest else Path("corpus/synthetic/grandstaff")
+        dest = Path(args.dest) if args.dest else Path("corpora/grandstaff")
         source_dir = Path(args.source_dir) if args.source_dir else None
         n = fetch(dest, limit=args.limit, seed=args.seed, source_dir=source_dir)
         print(f"wrote {n} samples to {dest}")

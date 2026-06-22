@@ -104,10 +104,10 @@ def create_app() -> FastAPI:
         return {"ok": True}
 
     # --- corpora (read-write) ----------------------------------------------
-    # Unlike the run routes above, these mutate the corpus/ tree (create dirs,
+    # Unlike the run routes above, these mutate the corpora/ tree (create dirs,
     # write/delete files). They call omrbench.corpus directly — engine-free —
     # the same way delete_run calls omrbench.runs. A corpus is identified by its
-    # path (e.g. "corpus/real/polish_scores"), passed as a query param so
+    # path (e.g. "corpora/polish_scores"), passed as a query param so
     # its slashes don't fight the router.
 
     @app.get("/api/corpora")

@@ -22,7 +22,7 @@ subprocess adapters, and keep the scoring path free of any engine-specific or
 cross-format conversion. Each component can be run and tested independently:
 
 ```
-corpus/   images + reference MusicXML (+ optional **kern)
+corpora/  images + reference MusicXML (+ optional **kern)
 adapters/ "images -> MusicXML" subprocess wrappers, 1 per engine
 score/    MusicXML-vs-MusicXML, imports no engine
 ```
@@ -61,11 +61,11 @@ pip install -e '.[augment]' # + corpus image degradation (omrbench augment)
 
 ```bash
 # 1. get a corpus
-omrbench fetch polish-scores               # real -> corpus/real/polish_scores/
-omrbench fetch grandstaff --limit 200      # synthetic -> corpus/synthetic/grandstaff/
+omrbench fetch polish-scores               # real -> corpora/polish_scores/
+omrbench fetch grandstaff --limit 200      # synthetic -> corpora/grandstaff/
 
 # 2. run an engine declared in omrbench.toml (see "Engines" below) -> a new run
-omrbench run --engine homr --corpus corpus/real/polish_scores
+omrbench run --engine homr --corpus corpora/polish_scores
 #   prints the run id, e.g.  homr-20260614T210837Z
 
 # 3. score that run (engine + corpus come from the run; no need to restate them)
@@ -76,8 +76,8 @@ To probe robustness, write a degraded copy of a synthetic corpus and run against
 it (reported separately — it stays the same kind as its source):
 
 ```bash
-omrbench augment --corpus corpus/synthetic/grandstaff \
-                 --out    corpus/synthetic/grandstaff_blur \
+omrbench augment --corpus corpora/grandstaff \
+                 --out    corpora/grandstaff_blur \
                  --blur 1.2 --rotate 2 --noise 12 --jpeg 45 --seed 1
 ```
 
@@ -125,7 +125,7 @@ cwd     = "/path/to/homr-v0.6"
 ```
 
 ```bash
-omrbench run   --engine homr --version 0.6.0 --corpus corpus/real/polish_scores
+omrbench run   --engine homr --version 0.6.0 --corpus corpora/polish_scores
 omrbench score <run-id>        # the run id that `run` printed
 ```
 
@@ -175,5 +175,5 @@ Two adapters ship: `homr` and `audiveris`. To add your own, implement
 
 ## License
 
-Code: MIT. Corpus data carries its **own** licenses — see `corpus/*/README.md`
+Code: MIT. Corpus data carries its **own** licenses — see `corpora/README.md`
 and per-sample `meta.yaml`. polish-scores is **evaluation-only; do not train**.

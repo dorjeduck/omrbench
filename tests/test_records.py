@@ -19,10 +19,10 @@ def test_comparable_runs_same_corpus_and_overlapping_samples(tmp_path, monkeypat
     monkeypatch.chdir(tmp_path)  # RUNS_DIR is the relative ./runs
     t = lambda d: datetime(2026, 1, d, tzinfo=timezone.utc)
 
-    a = _make_run("homr", t(1), "corpus/C", ["0000", "0001"])
-    b = _make_run("homr", t(2), "corpus/C", ["0001", "0002"])   # shares 0001 with a
-    _make_run("homr", t(3), "corpus/OTHER", ["0000"])           # different corpus -> excluded
-    _make_run("homr", t(4), "corpus/C", ["0009"])               # same corpus, no overlap -> excluded
+    a = _make_run("homr", t(1), "corpora/C", ["0000", "0001"])
+    b = _make_run("homr", t(2), "corpora/C", ["0001", "0002"])   # shares 0001 with a
+    _make_run("homr", t(3), "corpora/OTHER", ["0000"])           # different corpus -> excluded
+    _make_run("homr", t(4), "corpora/C", ["0009"])               # same corpus, no overlap -> excluded
 
     comparable = [r.run_id for r in records.comparable_runs(a)]
     assert comparable == [b]
@@ -34,7 +34,7 @@ def test_run_meta_carries_status_and_coverage(tmp_path, monkeypatch):
     run_dir = runs.create_run_dir("homr", "1.0", when)
     (run_dir / "predictions" / "0000.musicxml").write_text("<x/>")
     runs.write_run_meta(run_dir, {
-        "engine": "homr", "corpus": "corpus/C", "date": when.isoformat(),
+        "engine": "homr", "corpus": "corpora/C", "date": when.isoformat(),
         "status": "complete", "samples_attempted": 2, "samples_produced": 1,
     })
     meta = next(m for m in records.list_runs() if m.run_id == run_dir.name)
@@ -45,12 +45,12 @@ def test_run_meta_carries_status_and_coverage(tmp_path, monkeypatch):
 
 def test_run_meta_legacy_run_has_no_status(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    legacy = _make_run("homr", datetime(2026, 1, 1, tzinfo=timezone.utc), "corpus/C", ["0000"])
+    legacy = _make_run("homr", datetime(2026, 1, 1, tzinfo=timezone.utc), "corpora/C", ["0000"])
     meta = next(m for m in records.list_runs() if m.run_id == legacy)
     assert meta.status is None and meta.produced is None and meta.attempted is None
 
 
 def test_comparable_runs_excludes_self_and_handles_none(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    only = _make_run("homr", datetime(2026, 1, 1, tzinfo=timezone.utc), "corpus/C", ["0000"])
+    only = _make_run("homr", datetime(2026, 1, 1, tzinfo=timezone.utc), "corpora/C", ["0000"])
     assert records.comparable_runs(only) == []  # nothing else to compare with

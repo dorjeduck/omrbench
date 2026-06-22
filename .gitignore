@@ -10,6 +10,7 @@ __pycache__/
 # Generated runs (predictions + cached scores) and downloaded corpora are not
 # checked in.
 /runs/
-/corpus/real/polish_scores/
-/corpus/synthetic/grandstaff/
+# All corpus data is local (fetched/created); only the README is tracked.
+/corpora/*
+!/corpora/README.md
 /datasets/

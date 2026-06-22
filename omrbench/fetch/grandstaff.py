@@ -78,6 +78,7 @@ def fetch(dest: Path, limit: int = 200, seed: int = 0, source_dir: Path | None =
         (sample_dir / "meta.yaml").write_text(
             yaml.safe_dump(
                 {
+                    "kind": "synthetic",
                     "source": "grandstaff",
                     "type": "engraved",
                     "origin": str(krn.relative_to(source)),

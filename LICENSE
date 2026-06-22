@@ -23,6 +23,6 @@ SOFTWARE.
 ---
 
 NOTE: This MIT license covers the omrbench CODE only. Benchmark CORPUS data
-distributed or downloaded into corpus/ carries its own, separate licenses; see
+distributed or downloaded into corpora/ carries its own, separate licenses; see
 each corpus kind's README.md and per-sample meta.yaml. In particular, the
 polish-scores real-scan data is EVALUATION-ONLY and must not be used for training.

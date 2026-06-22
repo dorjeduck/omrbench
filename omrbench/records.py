@@ -27,7 +27,6 @@ class RunMeta:
     engine: str
     engine_version: str | None
     corpus: str
-    kind: str | None
     date: str
     metrics: list[str]          # cached metric names for this run
     summaries: dict             # metric -> summary dict
@@ -53,7 +52,6 @@ def _meta(run: Run) -> RunMeta:
         engine=run.engine,
         engine_version=run.engine_version,
         corpus=run.corpus,
-        kind=corpus_mod.kind_of(run.corpus),
         date=run.date,
         metrics=metrics,
         summaries=summaries,
@@ -130,7 +128,7 @@ def case_paths(run_id: str, sample_id: str) -> CasePaths:
 
 
 def list_corpora() -> list[corpus_mod.CorpusInfo]:
-    """Every corpus under the ``corpus/`` tree, summarised."""
+    """Every corpus under the ``corpora/`` tree, summarised."""
     return corpus_mod.list_corpora()
 
 
