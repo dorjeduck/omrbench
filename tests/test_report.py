@@ -28,18 +28,10 @@ def test_worst_ranked_by_primary_descending():
     assert [s.sample_id for s in worst] == ["0001", "0000"]
 
 
-def test_to_record_schema_and_counts():
-    record = _report().to_record(
-        engine="homr",
-        engine_version="0.6.0",
-        kind="real",
-        date="2026-06-18T00:00:00+00:00",
-    )
+def test_score_record_schema_and_counts():
+    record = _report().to_score_record()
     assert record["schema_version"] == RECORD_SCHEMA_VERSION
-    assert record["engine"] == "homr"
-    assert record["engine_version"] == "0.6.0"
     assert record["metric"] == "music21"
-    assert record["kind"] == "real"
 
     summary = record["summary"]
     assert summary["samples_total"] == 3
@@ -95,8 +87,8 @@ def test_distribution_empty_when_nothing_scored():
     assert "spread" not in report.render()
 
 
-def test_to_record_includes_spread_keys():
-    summary = _spread_report([0.0, 0.5, 1.0]).to_record("e", None, None, "d")["summary"]
+def test_score_record_includes_spread_keys():
+    summary = _spread_report([0.0, 0.5, 1.0]).to_score_record()["summary"]
     assert {"p90_ser", "p95_ser", "max_ser", "iqr_ser"} <= summary.keys()
     assert summary["max_ser"] == 1.0
 

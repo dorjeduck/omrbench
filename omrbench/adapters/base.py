@@ -18,7 +18,8 @@ from omrbench.corpus import Sample
 
 
 class Adapter(ABC):
-    #: the toml entry name (the ``--engine`` value); a unique config key.
+    #: a display label for this concrete install, ``engine@version`` (set by
+    #: ``load_engine``); not a config key — entries are identified by engine + version.
     name: str
     #: the tool identity (the ``engine`` field), shared across versions; what runs
     #: are grouped on. Defaults to ``name`` if not given.

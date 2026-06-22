@@ -4,17 +4,20 @@ homr writes ``<name>.musicxml`` next to its input image. We run it on a copy of
 the input in a temp dir, then move the result to the expected output path.
 
 The command (``cmd``) and working directory (``cwd``) come from the engine's
-``omrbench.toml`` entry, so this works whether homr is on PATH or run through
+``omrbench.toml`` entry (a ``[[engines]]`` array element, identified by
+``engine`` + ``version``), so this works whether homr is on PATH or run through
 Poetry/uvx:
 
-    [engines.homr]                # pip/uvx install on PATH
-    adapter = "homr"
+    [[engines]]                   # pip/uvx install on PATH
+    engine  = "homr"
+    version = "0.6.2"
     cmd     = "homr"
 
-    [engines.homr-0_6]            # a specific checkout
-    adapter = "homr"
+    [[engines]]                   # a specific checkout
+    engine  = "homr"
+    version = "0.6.1"
     cmd     = "poetry run homr"
-    cwd     = "/path/to/homr-v0.6"   # required when cmd must run from a dir
+    cwd     = "/path/to/homr-v0.6.1"   # required when cmd must run from a dir
 """
 
 from __future__ import annotations

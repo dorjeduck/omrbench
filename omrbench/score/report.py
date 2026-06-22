@@ -87,28 +87,6 @@ class Report:
             "samples": self._samples_list(),
         }
 
-    def to_record(
-        self,
-        engine: str,
-        engine_version: str | None,
-        kind: str | None,
-        date: str,
-    ) -> dict:
-        """A self-describing result record: metadata + aggregates + every
-        per-sample result, so history/comparison/worst-N are views over JSON
-        with no re-run. Imports no engine."""
-        return {
-            "schema_version": RECORD_SCHEMA_VERSION,
-            "engine": engine,
-            "engine_version": engine_version,
-            "metric": self.metric.name,
-            "corpus": self.corpus,
-            "kind": kind,
-            "date": date,
-            "summary": self._summary_dict(),
-            "samples": self._samples_list(),
-        }
-
     def render(self) -> str:
         fmt = getattr(self.metric, "format", default_format)
         lines = [

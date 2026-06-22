@@ -8,15 +8,18 @@ the uncompressed MusicXML out of it to ``<sample_id>.musicxml`` — so the rest 
 the pipeline sees the same plain MusicXML it gets from any other engine.
 
 The command (``cmd``) and working directory (``cwd``) come from the engine's
-``omrbench.toml`` entry, so this works whether Audiveris is a launcher on PATH or
-invoked through ``java -jar``:
+``omrbench.toml`` entry (a ``[[engines]]`` array element, identified by
+``engine`` + ``version``), so this works whether Audiveris is a launcher on PATH
+or invoked through ``java -jar``:
 
-    [engines.audiveris]
-    adapter = "audiveris"
+    [[engines]]
+    engine  = "audiveris"
+    version = "5.10.2"
     cmd     = "audiveris"                 # the Audiveris launcher script on PATH
 
-    [engines.audiveris-jar]
-    adapter = "audiveris"
+    [[engines]]
+    engine  = "audiveris"
+    version = "5.10-jar"
     cmd     = "java -jar /path/to/audiveris.jar"
 """
 
