@@ -90,6 +90,16 @@ def create_app() -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=f"unknown metric: {metric}") from exc
 
+    @app.post("/api/runs/{run_id}/scores/{metric}/cancel")
+    def score_cancel(run_id: str, metric: str) -> dict:
+        from omrbench.server import jobs
+        try:
+            return jobs.cancel(run_id, metric)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"unknown metric: {metric}") from exc
+
     @app.get("/api/metrics")
     def metrics() -> list[dict]:
         # From the registry keys only — no metric is instantiated, so optional

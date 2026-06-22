@@ -84,6 +84,13 @@ button.action:disabled { opacity: 0.6; cursor: default; }
 .score-box { border-color: var(--accent); background: #f5f9ff; }
 .score-box h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
 .score-box p { margin: 0 0 0.7rem; }
+.score-cell { display: flex; flex-direction: column; gap: 0.35rem; }
+.score-controls { display: flex; gap: 0.5rem; align-items: center; }
+button.stop-btn { color: var(--bad); border-color: var(--bad); cursor: pointer; }
+button.stop-btn:disabled { opacity: 0.6; cursor: default; }
+.progress { display: none; height: 6px; width: 100%; min-width: 180px; background: #d6e4f5; border-radius: 3px; overflow: hidden; }
+.progress.active { display: block; }
+.progress-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.3s ease; }
 .warn { color: #c0392b; cursor: help; }
 tr.broken td { background: #fff6f5; }
 .broken-banner { border-color: #c0392b; background: #fff6f5; color: #922; }

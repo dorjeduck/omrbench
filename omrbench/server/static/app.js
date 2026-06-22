@@ -2,7 +2,8 @@
 
 const app = document.getElementById("app");
 let METRICS = {}; // name -> {primary, title, ...}, loaded once
-let currentMetric = null; // app-wide selected metric, remembered across views
+let currentMetric = null; // metric being viewed in run detail/compare/case
+let runsFilter = { engine: "all", corpus: "all", metric: "all" }; // the runs list's own filters, remembered separately
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -144,8 +145,11 @@ async function viewRuns() {
   let metrics = [...new Set(runs.flatMap((r) => r.metrics || []))].sort();
   if (!metrics.length) metrics.push("music21");
   if (metrics.includes("music21")) metrics = ["music21", ...metrics.filter((m) => m !== "music21")];
-  let fEngine = "all", fCorpus = "all";
-  let fMetric = metrics.includes(currentMetric) ? currentMetric : "all";
+  // Restore the list's own remembered filters, ignoring any that no longer exist.
+  const keep = (vals, v) => (v === "all" || vals.includes(v) ? v : "all");
+  let fEngine = keep(distinct("engine"), runsFilter.engine);
+  let fCorpus = keep(distinct("corpus"), runsFilter.corpus);
+  let fMetric = keep(metrics, runsFilter.metric);
 
   const filterSelect = (opts, value, onpick) => {
     const s = el("select", { onchange: (e) => onpick(e.target.value) });
@@ -156,9 +160,9 @@ async function viewRuns() {
   };
   const filters = el("div", { class: "filters" },
     el("span", { class: "muted" }, "Filter:"),
-    el("label", {}, "engine ", filterSelect(distinct("engine"), fEngine, (v) => { fEngine = v; draw(); })),
-    el("label", {}, "corpus ", filterSelect(distinct("corpus"), fCorpus, (v) => { fCorpus = v; draw(); })),
-    el("label", {}, "metric ", filterSelect(metrics, fMetric, (v) => { fMetric = currentMetric = v; draw(); })));
+    el("label", {}, "engine ", filterSelect(distinct("engine"), fEngine, (v) => { fEngine = runsFilter.engine = v; draw(); })),
+    el("label", {}, "corpus ", filterSelect(distinct("corpus"), fCorpus, (v) => { fCorpus = runsFilter.corpus = v; draw(); })),
+    el("label", {}, "metric ", filterSelect(metrics, fMetric, (v) => { fMetric = runsFilter.metric = v; draw(); })));
 
   const container = el("div", {});
   app.append(el("h2", {}, "Runs"), filters, container);
@@ -227,48 +231,61 @@ async function viewRun(runId, wantMetric) {
     const box = el("div", { class: "card score-box" });
     box.append(
       el("h3", {}, "Score with another metric"),
-      el("p", { class: "muted" },
-        "Scores are computed on demand and then cached. omr-ned is slow: it runs "
-        + "musicdiff over every sample and can take a few minutes, and the page waits until it finishes."));
+      el("p", { class: "muted" }, "omr-ned is compute intense and will run in the background"));
     const row = el("div", { class: "score-actions" });
     uncached.forEach((m) => {
-      const btn = el("button", {
-        class: "action",
-        title: `compute ${m} for this run`,
-        onclick: async () => {
-          btn.disabled = true;
-          btn.textContent = `scoring ${m}…`;
-          try {
-            await fetch(`/api/runs/${runId}/scores/${m}/start`, { method: "POST" });
-          } catch (e) {
-            btn.disabled = false; btn.textContent = `Score ${m}`;
-            alert(`could not start scoring ${m}: ${e.message}`);
-            return;
-          }
-          // Poll progress until the background job finishes, then re-render with
-          // the now-cached metric selected.
-          const tick = async () => {
-            let p;
-            try {
-              p = await getJSON(`/api/runs/${runId}/scores/${m}/progress`);
-            } catch (e) {
-              btn.disabled = false; btn.textContent = `Score ${m}`;
-              alert(`lost track of scoring ${m}: ${e.message}`);
-              return;
-            }
-            if (p.status === "done") { viewRun(runId, m); return; }
-            if (p.status === "error") {
-              btn.disabled = false; btn.textContent = `Score ${m}`;
-              alert(`could not score ${m}: ${p.error}`);
-              return;
-            }
-            btn.textContent = p.total ? `scoring ${m}… ${p.done}/${p.total}` : `scoring ${m}…`;
-            setTimeout(tick, 1000);
-          };
-          tick();
-        },
-      }, `Score ${m}`);
-      row.append(btn);
+      const btn = el("button", { class: "action", title: `compute ${m} for this run` }, `Score ${m}`);
+      const stop = el("button", { class: "stop-btn", style: "display:none" }, "Stop");
+      const fill = el("div", { class: "progress-fill" });
+      const bar = el("div", { class: "progress" }, fill);
+      const cell = el("div", { class: "score-cell" },
+        el("div", { class: "score-controls" }, btn, stop), bar);
+      row.append(cell);
+
+      const running = () => { btn.disabled = true; bar.classList.add("active"); stop.style.display = ""; };
+      const idle = () => {
+        btn.disabled = false; btn.textContent = `Score ${m}`;
+        bar.classList.remove("active"); fill.style.width = "0%";
+        stop.style.display = "none"; stop.disabled = false;
+      };
+
+      // The poll loop is shared by a fresh click and by resuming a job already
+      // running on the server (so navigating away and back reconnects to it).
+      const poll = async () => {
+        let p;
+        try { p = await getJSON(`/api/runs/${runId}/scores/${m}/progress`); }
+        catch (e) { idle(); alert(`lost track of scoring ${m}: ${e.message}`); return; }
+        if (p.status === "done") { viewRun(runId, m); return; }
+        if (p.status === "error") { idle(); alert(`could not score ${m}: ${p.error}`); return; }
+        if (p.status === "idle") { idle(); return; }  // stopped — work discarded
+        running();
+        if (p.status === "cancelling") {
+          btn.textContent = "stopping…"; stop.disabled = true;
+        } else {
+          btn.textContent = p.total ? `scoring ${m}… ${p.done}/${p.total}` : "scoring…";
+          fill.style.width = p.total ? `${Math.round((100 * p.done) / p.total)}%` : "0%";
+        }
+        setTimeout(poll, 1000);
+      };
+
+      btn.addEventListener("click", async () => {
+        running(); btn.textContent = "scoring…";
+        try { await fetch(`/api/runs/${runId}/scores/${m}/start`, { method: "POST" }); }
+        catch (e) { idle(); alert(`could not start scoring ${m}: ${e.message}`); return; }
+        poll();
+      });
+
+      stop.addEventListener("click", async () => {
+        if (!confirm(`Stop scoring ${m}? The work so far is discarded and ${m} stays unscored.`)) return;
+        stop.disabled = true; btn.textContent = "stopping…";
+        try { await fetch(`/api/runs/${runId}/scores/${m}/cancel`, { method: "POST" }); }
+        catch (e) { stop.disabled = false; alert(`could not stop: ${e.message}`); }
+      });
+
+      // On load, reconnect to a job already running (or being cancelled).
+      getJSON(`/api/runs/${runId}/scores/${m}/progress`)
+        .then((p) => { if (p.status === "running" || p.status === "cancelling") poll(); })
+        .catch(() => {});
     });
     box.append(row);
     return box;
@@ -299,11 +316,13 @@ async function viewRun(runId, wantMetric) {
   // Compare with: only runs on the same corpus sharing >=1 sample (server-filtered).
   const comparable = await getJSON(`/api/runs/${runId}/comparable`);
   if (comparable.length) {
-    const cmp = el("select", {
-      onchange: (e) => { if (e.target.value) location.hash = `#/compare/${runId}/${e.target.value}/${metric}`; },
-    }, el("option", { value: "" }, "choose a run…"));
+    const cmp = el("select", {}, el("option", { value: "" }, "choose a run…"));
     comparable.forEach((r) => cmp.append(el("option", { value: r.run_id }, runLabel(r))));
-    app.append(el("div", { class: "filters" }, el("label", {}, "Compare with ", cmp)));
+    const go = el("button", {
+      class: "action",
+      onclick: () => { if (cmp.value) location.hash = `#/compare/${runId}/${cmp.value}/${metric}`; },
+    }, "Compare");
+    app.append(el("div", { class: "filters" }, el("label", {}, "Compare with ", cmp), go));
   }
 
   const actions = scoreActions();
@@ -567,6 +586,7 @@ async function viewMetrics() {
 function copyToCorpusControl(sourceCorpus, getSampleIds, onDone) {
   const sel = el("select", {}, el("option", { value: "" }, "copy to corpus…"));
   const btn = el("button", {
+    class: "action",
     onclick: async () => {
       const ids = getSampleIds();
       if (!sel.value) return alert("pick a target corpus");
@@ -601,6 +621,7 @@ async function viewCorpora() {
   // New-corpus form: just a name (a single safe path segment).
   const nameIn = el("input", { type: "text", placeholder: "corpus name", size: "20" });
   const create = el("button", {
+    class: "action",
     onclick: async () => {
       if (!nameIn.value.trim()) return alert("name required");
       const fd = new FormData();
@@ -726,6 +747,7 @@ function addSampleCard(corpusId, reload) {
   const licenseIn = el("input", { type: "text", placeholder: "license", size: "24" });
   const kindIn = el("input", { type: "text", placeholder: "kind (optional, e.g. real)", size: "16" });
   const upload = el("button", {
+    class: "action",
     onclick: async () => {
       if (!imageIn.files[0]) return alert("image required");
       if (!refText.value.trim()) return alert("reference MusicXML required");

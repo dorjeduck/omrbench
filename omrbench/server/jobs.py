@@ -18,9 +18,13 @@ from omrbench import runs as runs_mod
 from omrbench import scoring
 from omrbench.score import get_metric
 
-# (run_id, metric) -> {status: "running"|"done"|"error", done, total, error}
+# (run_id, metric) -> {status: "running"|"done"|"error", done, total, error, cancel}
 _jobs: dict[tuple[str, str], dict] = {}
 _lock = threading.Lock()
+
+
+class _Cancelled(Exception):
+    """Raised inside the scoring loop to abort a job on request."""
 
 
 def _is_cached(run_id: str, metric: str) -> bool:
@@ -47,13 +51,33 @@ def start(run_id: str, metric: str) -> dict:
 
 def status(run_id: str, metric: str) -> dict:
     """Current job state. A score already on disk reports ``done`` even if this
-    process never ran it."""
+    process never ran it; a running job awaiting cancellation reports
+    ``cancelling``; with no job and no cache it's ``idle``."""
     runs_mod.load_run(run_id)
     get_metric(metric)
     if _is_cached(run_id, metric):
         return {"status": "done", "done": None, "total": None}
     with _lock:
-        return dict(_jobs.get((run_id, metric), {"status": "idle"}))
+        job = _jobs.get((run_id, metric))
+        if not job:
+            return {"status": "idle"}
+        out = dict(job)
+        if job.get("cancel"):
+            out["status"] = "cancelling"
+        return out
+
+
+def cancel(run_id: str, metric: str) -> dict:
+    """Ask a running job to stop. It aborts at the next sample boundary, writes
+    nothing (so the metric stays unscored), and the job record is dropped."""
+    runs_mod.load_run(run_id)
+    get_metric(metric)
+    with _lock:
+        job = _jobs.get((run_id, metric))
+        if job and job["status"] == "running":
+            job["cancel"] = True
+            return {"status": "cancelling"}
+    return {"status": "idle"}
 
 
 def _run(run_id: str, metric: str) -> None:
@@ -63,13 +87,24 @@ def _run(run_id: str, metric: str) -> None:
         metric_obj = get_metric(metric)
 
         def on_progress(done: int, total: int) -> None:
+            # Check the cancel flag each sample; abort before recording more. The
+            # raise happens outside the lock so the handler can re-acquire it.
             with _lock:
-                _jobs[key].update(done=done, total=total)
+                cancelled = _jobs[key].get("cancel")
+                if not cancelled:
+                    _jobs[key].update(done=done, total=total)
+            if cancelled:
+                raise _Cancelled()
 
         report = scoring.score_run(run, metric_obj, on_progress=on_progress)
         scoring.write_score(run, report)
         with _lock:
             _jobs[key].update(status="done")
+    except _Cancelled:
+        # Nothing was written (write_score runs only on completion), so the metric
+        # is simply unscored. Drop the record -> status() reports "idle".
+        with _lock:
+            _jobs.pop(key, None)
     except Exception as exc:  # surface the failure to the poller, don't crash the thread
         with _lock:
             _jobs[key] = {"status": "error", "done": None, "total": None, "error": str(exc)}
