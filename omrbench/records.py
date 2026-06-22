@@ -146,6 +146,7 @@ def corpus_detail(corpus_id: str) -> dict:
                 "id": s.id,
                 "has_image": s.image is not None,
                 "has_reference": s.reference_musicxml.is_file(),
+                "kind": s.kind,
                 "meta": s.meta,
             }
             for s in samples

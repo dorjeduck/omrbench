@@ -35,11 +35,16 @@ needs only a run id. (`predictions/` and `results/` are the retired old layout.)
 
 ## Corpus discipline
 
-- **Two kinds, never mixed in a report.** `corpus/synthetic/` (rendered
-  from known-good MusicXML — exact, free, *optimistic*) and `corpus/real/`
-  (real scans, hand-verified — predictive, precious). Reporting them together
-  hides the optimism in synthetic numbers. A corpus's kind is its top folder
-  (`synthetic`/`real`), derived from the path — not stored in `meta.yaml`.
+- **`kind` is an informational per-sample tag, not a constraint.** Two values
+  matter in practice: `synthetic` (image rendered from known-good MusicXML —
+  exact, free, *optimistic*) and `real` (scans, hand-verified — predictive,
+  precious). It lives in a sample's `meta.yaml`, or is inferred from a
+  `synthetic/`/`real/` folder in its path when absent. Nothing is enforced on
+  it — corpora can hold a mix, and you can collect across kinds freely (e.g. a
+  "hardest cases" set). It's there for display and optional filtering. Just be
+  aware when reading scores: averaging synthetic and real into one headline
+  number hides the optimism in the synthetic part — that's a reporting judgement
+  call, not something the tool blocks.
 - **Eval-only data stays eval-only.** The real seed `btrkeks/polish-scores` is
   *evaluation only — never training*. That restriction is propagated into every
   sample's `meta.yaml` and stated in `LICENSE`. Do not weaken it.

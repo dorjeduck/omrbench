@@ -122,11 +122,11 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/corpora")
-    def create_corpus(kind: str = Form(...), name: str = Form(...)) -> dict:
+    def create_corpus(name: str = Form(...)) -> dict:
         from omrbench import corpus
 
         try:
-            path = corpus.create_corpus(kind, name)
+            path = corpus.create_corpus(name)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except FileExistsError as exc:
@@ -153,12 +153,13 @@ def create_app() -> FastAPI:
         source: str = Form(""),
         type: str = Form(""),
         license: str = Form(""),
+        kind: str = Form(""),
     ) -> dict:
         from omrbench import corpus
 
         suffix = Path(image.filename or "").suffix or ".png"
-        # The kind (synthetic/real) is the corpus's folder, not a meta field.
-        meta = {key: val for key, val in (("source", source), ("type", type), ("license", license)) if val}
+        # kind is an optional informational tag, stored in meta when given.
+        meta = {k: v for k, v in (("source", source), ("type", type), ("license", license), ("kind", kind)) if v}
         try:
             sample = corpus.add_sample(
                 Path(corpus_id),
@@ -182,16 +183,10 @@ def create_app() -> FastAPI:
         from omrbench import corpus
         from omrbench.corpus import Sample
 
+        # Curation is free-form: any sample can be collected into any corpus
+        # (e.g. a "hardest cases" set spanning sources). kind is informational and
+        # rides along in the copied meta; nothing is blocked here.
         src = Sample(id=from_sample_id, dir=Path(from_corpus) / from_sample_id)
-        # The two kinds (synthetic/real) must never be mixed in one corpus
-        # (CLAUDE.md): refuse a source whose kind differs from this corpus's.
-        target_kind = corpus.kind_of(corpus_id)
-        src_kind = corpus.kind_of(from_corpus)
-        if src_kind and target_kind and src_kind != target_kind:
-            raise HTTPException(
-                status_code=400,
-                detail=f"kind mismatch: sample is {src_kind}, corpus is {target_kind}",
-            )
         try:
             sample = corpus.copy_sample(Path(corpus_id), src)
         except FileNotFoundError as exc:

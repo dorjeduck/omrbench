@@ -23,9 +23,10 @@ import yaml
 
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
 
-# The two kinds of corpus, by where the ground truth comes from. Kept in
-# separate folders so their scores are never silently mixed (see CLAUDE.md); a
-# corpus's kind is its parent folder.
+# Recognised values for the optional per-sample ``kind`` tag (synthetic ground
+# truth rendered from MusicXML, vs. a real scan). Purely informational — nothing
+# is enforced on it. Also the folder names used by the seed fetchers, so a kind
+# can be inferred from a sample's path when its meta doesn't state one.
 KINDS = ("synthetic", "real")
 CORPUS_ROOT = Path("corpus")
 
@@ -57,6 +58,13 @@ class Sample:
         if not meta_path.exists():
             return {}
         return yaml.safe_load(meta_path.read_text()) or {}
+
+    @property
+    def kind(self) -> str | None:
+        """A purely informational tag (e.g. ``synthetic``/``real``): the sample's
+        own ``meta.yaml`` value if set, else inferred from a kind folder in its
+        path. Not enforced anywhere — for display and optional filtering."""
+        return self.meta.get("kind") or kind_of(self.dir)
 
 
 def discover(corpus_dir: Path) -> list[Sample]:
@@ -120,10 +128,15 @@ def list_corpora(root: Path = CORPUS_ROOT) -> list[CorpusInfo]:
         return out
 
     def is_corpus(d: Path) -> bool:
-        # Recognise a corpus either by the samples it holds or — so a freshly
-        # created, still-empty corpus shows up — by living directly under a kind
-        # folder (that's exactly where create_corpus puts it).
-        return d.parent.name in KINDS or _is_corpus_dir(d)
+        # Recognise a corpus by the samples it holds, or — so a freshly created,
+        # still-empty corpus shows up — by sitting where corpora are made: a
+        # direct child of the corpus root, or under a kind folder. The kind
+        # folders themselves are containers, not corpora.
+        if _is_corpus_dir(d):
+            return True
+        if d.parent.name in KINDS:
+            return True
+        return d.parent == root and d.name not in KINDS
 
     def walk(d: Path) -> None:
         if is_corpus(d):
@@ -157,15 +170,13 @@ def _confine(path: Path, root: Path) -> Path:
     return resolved
 
 
-def create_corpus(kind: str, name: str, root: Path = CORPUS_ROOT) -> Path:
-    """Create an empty corpus ``root/kind/name``. ``kind`` must be one of the two
-    known kinds and ``name`` a safe single path segment. Raises FileExistsError
-    if it already exists."""
-    if kind not in KINDS:
-        raise ValueError(f"kind must be one of {KINDS}, got {kind!r}")
-    if not name or "/" in name or "\\" in name or name in (".", ".."):
+def create_corpus(name: str, root: Path = CORPUS_ROOT) -> Path:
+    """Create an empty corpus ``root/name``. ``name`` must be a safe single path
+    segment (and not a reserved kind-folder name). Raises FileExistsError if it
+    already exists."""
+    if not name or "/" in name or "\\" in name or name in (".", "..") or name in KINDS:
         raise ValueError(f"invalid corpus name: {name!r}")
-    corpus_dir = Path(root) / kind / name
+    corpus_dir = Path(root) / name
     _confine(corpus_dir, Path(root))
     if corpus_dir.exists():
         raise FileExistsError(f"corpus already exists: {corpus_dir}")
@@ -212,8 +223,9 @@ def add_sample(
 def copy_sample(corpus_dir: Path, src: Sample) -> Sample:
     """Curate: copy ``src`` (image + reference + meta) into ``corpus_dir`` under a
     fresh id. The meta is copied verbatim so its license/source ride along
-    unchanged — eval-only stays eval-only. The caller is responsible for any
-    kind-match policy."""
+    unchanged — eval-only stays eval-only. The source's kind is stamped into the
+    copy's meta so the (informational) tag survives the move into any corpus,
+    even one outside a kind folder."""
     corpus_dir = Path(corpus_dir)
     if not corpus_dir.is_dir():
         raise FileNotFoundError(f"corpus dir not found: {corpus_dir}")
@@ -227,7 +239,10 @@ def copy_sample(corpus_dir: Path, src: Sample) -> Sample:
     if image is not None:
         shutil.copy(image, sample_dir / f"image{image.suffix.lower()}")
     shutil.copy(src.reference_musicxml, sample_dir / "reference.musicxml")
-    (sample_dir / "meta.yaml").write_text(yaml.safe_dump(src.meta, sort_keys=True))
+    meta = dict(src.meta)
+    if src.kind and "kind" not in meta:
+        meta["kind"] = src.kind
+    (sample_dir / "meta.yaml").write_text(yaml.safe_dump(meta, sort_keys=True))
     return Sample(id=sample_id, dir=sample_dir)
 
 

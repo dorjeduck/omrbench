@@ -26,8 +26,6 @@ const el = (tag, attrs = {}, ...kids) => {
 
 const pct = (v) => (v == null ? "—" : `${(100 * v).toFixed(2)}%`);
 const shortDate = (iso) => (iso || "").replace("T", " ").slice(0, 19);
-const KINDS = ["synthetic", "real"];
-const kindOf = (p) => (p || "").split("/").find((x) => KINDS.includes(x)) || null;
 // One label for a run everywhere it's named: engine, version (the thing that
 // tells two runs of the same tool apart), then date.
 const runLabel = (m) => `${m.engine}${m.engine_version ? " " + m.engine_version : ""} @ ${shortDate(m.date)}`;
@@ -354,7 +352,7 @@ async function viewCase(runId, sampleId) {
   if (meta.corpus)
     app.append(el("div", { class: "filters" },
       el("span", { class: "muted" }, "Hard case? "),
-      copyToCorpusControl(meta.corpus, kindOf(meta.corpus), () => [sampleId])));
+      copyToCorpusControl(meta.corpus, () => [sampleId])));
 
   // per-sample numbers, from the run's score (computed on demand by the server)
   let rec = null;
@@ -522,9 +520,9 @@ async function viewMetrics() {
 
 // "Copy to corpus" — the push side of curation. Given a source corpus and a
 // getter for the currently chosen sample ids, drop them into a target corpus
-// (one curate POST each). Only same-kind targets are offered, since the two
-// kinds are never mixed; the server enforces it too. Returns a control to embed.
-function copyToCorpusControl(sourceCorpus, sourceKind, getSampleIds, onDone) {
+// (one curate POST each). Any corpus is a valid target — collect freely (e.g. a
+// "hardest cases" set across sources). Returns a control to embed anywhere.
+function copyToCorpusControl(sourceCorpus, getSampleIds, onDone) {
   const sel = el("select", {}, el("option", { value: "" }, "copy to corpus…"));
   const btn = el("button", {
     onclick: async () => {
@@ -546,8 +544,8 @@ function copyToCorpusControl(sourceCorpus, sourceKind, getSampleIds, onDone) {
     },
   }, "Copy");
   getJSON("/api/corpora").then((all) => {
-    const targets = all.filter((c) => c.path !== sourceCorpus && (!sourceKind || !c.kind || c.kind === sourceKind));
-    if (!targets.length) sel.append(el("option", { value: "", disabled: "disabled" }, "no other same-kind corpus"));
+    const targets = all.filter((c) => c.path !== sourceCorpus);
+    if (!targets.length) sel.append(el("option", { value: "", disabled: "disabled" }, "no other corpus"));
     targets.forEach((c) => sel.append(el("option", { value: c.path }, c.path)));
   });
   return el("span", { class: "filters" }, sel, btn);
@@ -558,15 +556,12 @@ async function viewCorpora() {
   app.innerHTML = "";
   app.append(el("h2", {}, "Corpora"));
 
-  // New-corpus form: kind is mandatory (the two kinds are never mixed), name is
-  // a single safe path segment.
-  const kindSel = el("select", {}, ...KINDS.map((k) => el("option", { value: k }, k)));
+  // New-corpus form: just a name (a single safe path segment).
   const nameIn = el("input", { type: "text", placeholder: "corpus name", size: "20" });
   const create = el("button", {
     onclick: async () => {
       if (!nameIn.value.trim()) return alert("name required");
       const fd = new FormData();
-      fd.append("kind", kindSel.value);
       fd.append("name", nameIn.value.trim());
       const r = await fetch("/api/corpora", { method: "POST", body: fd });
       if (!r.ok) return alert(`could not create: ${(await r.json().catch(() => ({}))).detail || r.statusText}`);
@@ -574,8 +569,7 @@ async function viewCorpora() {
     },
   }, "Create");
   app.append(el("div", { class: "filters" },
-    el("label", {}, "New corpus — kind ", kindSel),
-    el("label", {}, "name ", nameIn), create));
+    el("label", {}, "New corpus — name ", nameIn), create));
 
   if (!corpora.length) {
     app.append(el("p", { class: "muted" }, "No corpora yet. Create one above or `omrbench fetch …`."));
@@ -630,10 +624,11 @@ async function viewCorpus(corpusId) {
   const delSelected = el("button", { class: "danger", onclick: () => deleteSamples(checkedIds()) }, "Delete selected");
   app.append(el("div", { class: "filters" },
     el("span", { class: "muted" }, "Tick samples, then "),
-    copyToCorpusControl(corpusId, detail.kind, checkedIds, () => viewCorpus(corpusId)),
+    copyToCorpusControl(corpusId, checkedIds, () => viewCorpus(corpusId)),
     delSelected));
   const thead = el("thead", {}, el("tr", {},
-    el("th", {}), el("th", {}, "Sample"), el("th", {}, "Reference"), el("th", {}, "Source"), el("th", {})));
+    el("th", {}), el("th", {}, "Sample"), el("th", {}, "Reference"),
+    el("th", {}, "Kind"), el("th", {}, "Source"), el("th", {})));
   app.append(el("div", { class: "card" }, el("table", {}, thead, tbody)));
 
   // One deleter for both the per-row 🗑 and "Delete selected".
@@ -653,7 +648,7 @@ async function viewCorpus(corpusId) {
     tbody.innerHTML = "";
     delSelected.disabled = !samples.length;
     if (!samples.length) {
-      tbody.append(el("tr", {}, el("td", { colspan: "5", class: "muted" }, "no samples left")));
+      tbody.append(el("tr", {}, el("td", { colspan: "6", class: "muted" }, "no samples left")));
       return;
     }
     samples.forEach((s) => {
@@ -666,6 +661,7 @@ async function viewCorpus(corpusId) {
         pick,
         el("td", {}, s.id),
         el("td", {}, s.has_reference ? "✓" : el("span", { class: "err" }, "missing")),
+        el("td", {}, s.kind ? el("span", { class: "kind" }, s.kind) : "—"),
         el("td", {}, s.meta?.source || "—"),
         el("td", { class: "num" }, del)));
     });
@@ -688,6 +684,7 @@ function addSampleCard(corpusId, reload) {
   const sourceIn = el("input", { type: "text", placeholder: "source", size: "16" });
   const typeIn = el("input", { type: "text", placeholder: "type (e.g. real_scan)", size: "16" });
   const licenseIn = el("input", { type: "text", placeholder: "license", size: "24" });
+  const kindIn = el("input", { type: "text", placeholder: "kind (optional, e.g. real)", size: "16" });
   const upload = el("button", {
     onclick: async () => {
       if (!imageIn.files[0]) return alert("image required");
@@ -698,6 +695,7 @@ function addSampleCard(corpusId, reload) {
       fd.append("source", sourceIn.value);
       fd.append("type", typeIn.value);
       fd.append("license", licenseIn.value);
+      fd.append("kind", kindIn.value);
       upload.disabled = true; upload.textContent = "uploading…";
       const r = await fetch(`/api/corpora/samples/upload?corpus_id=${encodeURIComponent(corpusId)}`, { method: "POST", body: fd });
       upload.disabled = false; upload.textContent = "Upload";
@@ -709,7 +707,7 @@ function addSampleCard(corpusId, reload) {
     el("p", { class: "muted" }, "Upload an authored sample"),
     el("div", { class: "filters" }, el("label", {}, "image ", imageIn), el("label", {}, "reference ", refIn)),
     refText,
-    el("div", { class: "filters" }, el("label", {}, sourceIn), el("label", {}, typeIn), el("label", {}, licenseIn), upload));
+    el("div", { class: "filters" }, el("label", {}, sourceIn), el("label", {}, typeIn), el("label", {}, licenseIn), el("label", {}, kindIn), upload));
   return card;
 }
 
@@ -723,7 +721,7 @@ async function viewCorpusSample(corpusId, sampleId) {
     el("a", { onclick: () => (location.hash = `#/corpora/${encodeURIComponent(corpusId)}`) }, detail.path),
     ` sample ${sampleId}`));
 
-  app.append(el("div", { class: "filters" }, copyToCorpusControl(corpusId, detail.kind, () => [sampleId])));
+  app.append(el("div", { class: "filters" }, copyToCorpusControl(corpusId, () => [sampleId])));
 
   const imgPanel = el("div", { class: "panel" }, el("h3", {}, "Source image"));
   const img = el("img", { src: `/api/corpora/file/image?${q}`, onerror: () => img.replaceWith(el("p", { class: "err" }, "no image")) });
@@ -735,7 +733,13 @@ async function viewCorpusSample(corpusId, sampleId) {
 
   const metaPanel = el("div", { class: "panel" }, el("h3", {}, "meta.yaml"));
   const dl = el("dl", { class: "meta-list" });
-  for (const [k, v] of Object.entries(sample?.meta || {})) dl.append(el("dt", {}, k), el("dd", {}, String(v)));
+  // Show the effective kind first (meta value, or inferred from the path), then
+  // the rest of meta without duplicating it.
+  if (sample?.kind) dl.append(el("dt", {}, "kind"), el("dd", {}, sample.kind));
+  for (const [k, v] of Object.entries(sample?.meta || {})) {
+    if (k === "kind") continue;
+    dl.append(el("dt", {}, k), el("dd", {}, String(v)));
+  }
   metaPanel.append(dl);
 
   app.append(el("div", { class: "case-panels" }, imgPanel, refPanel, metaPanel));

@@ -93,24 +93,23 @@ def test_sample_meta_parsed_and_empty_defaults(tmp_path):
 # --- corpus management (list + create + edit) ------------------------------
 
 
-def test_create_corpus_makes_kind_dir(tmp_path):
-    path = create_corpus("real", "myset", root=tmp_path)
-    assert path == tmp_path / "real" / "myset"
+def test_create_corpus_makes_dir(tmp_path):
+    path = create_corpus("myset", root=tmp_path)
+    assert path == tmp_path / "myset"
     assert path.is_dir()
 
 
-def test_create_corpus_rejects_bad_kind_and_name(tmp_path):
-    with pytest.raises(ValueError):
-        create_corpus("made_up", "x", root=tmp_path)
-    for bad in ("", "..", "a/b", "a\\b"):
+def test_create_corpus_rejects_bad_name(tmp_path):
+    # bad segments, and the reserved kind-folder names
+    for bad in ("", "..", "a/b", "a\\b", "synthetic", "real"):
         with pytest.raises(ValueError):
-            create_corpus("synthetic", bad, root=tmp_path)
+            create_corpus(bad, root=tmp_path)
 
 
 def test_create_corpus_refuses_existing(tmp_path):
-    create_corpus("synthetic", "dup", root=tmp_path)
+    create_corpus("dup", root=tmp_path)
     with pytest.raises(FileExistsError):
-        create_corpus("synthetic", "dup", root=tmp_path)
+        create_corpus("dup", root=tmp_path)
 
 
 def test_next_sample_id_increments(tmp_path):
@@ -201,7 +200,35 @@ def test_list_corpora_finds_leaf_corpus_dirs(tmp_path):
 
 
 def test_list_corpora_includes_empty_just_created(tmp_path):
-    empty = create_corpus("synthetic", "fresh", root=tmp_path)
+    empty = create_corpus("fresh", root=tmp_path)
     found = list_corpora(root=tmp_path)
     assert [c.path for c in found] == [str(empty)]
     assert found[0].count == 0
+
+
+def test_sample_kind_from_meta_or_path(tmp_path):
+    (tmp_path / "anywhere").mkdir()
+    (tmp_path / "synthetic" / "c").mkdir(parents=True)
+    (tmp_path / "plain").mkdir()
+    # explicit meta kind wins
+    d = _make_sample_dir(tmp_path / "anywhere", "0000", meta="kind: real\n")
+    assert Sample(id="0000", dir=d).kind == "real"
+    # else inferred from a kind folder in the path
+    sd = _make_sample_dir(tmp_path / "synthetic" / "c", "0000")
+    assert Sample(id="0000", dir=sd).kind == "synthetic"
+    # else None
+    nd = _make_sample_dir(tmp_path / "plain", "0000")
+    assert Sample(id="0000", dir=nd).kind is None
+
+
+def test_copy_sample_stamps_kind_so_it_travels(tmp_path):
+    # source under a synthetic folder, no kind in meta
+    src_corpus = tmp_path / "synthetic" / "src"
+    src_corpus.mkdir(parents=True)
+    _make_sample_dir(src_corpus, "0000", image="image.png", meta="source: s\n")
+    src = Sample(id="0000", dir=src_corpus / "0000")
+    # copied into a kind-less corpus, the inferred kind is recorded in meta
+    dst = create_corpus("mixed", root=tmp_path)
+    copied = copy_sample(dst, src)
+    assert copied.meta["kind"] == "synthetic"
+    assert copied.meta["source"] == "s"

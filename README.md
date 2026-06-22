@@ -27,7 +27,12 @@ adapters/ "images -> MusicXML" subprocess wrappers, 1 per engine
 score/    MusicXML-vs-MusicXML, imports no engine
 ```
 
-## Corpus kinds (reported separately, never mixed)
+## Corpus kinds (an informational tag)
+
+Each sample can carry a `kind` (in its `meta.yaml`, or inferred from a
+`synthetic/`/`real/` folder in its path). It's purely for display and optional
+filtering — nothing is enforced, corpora may mix kinds, and you can collect
+across them freely. The two values worth knowing:
 
 - **synthetic**: engraved scores with encoded ground truth. Ground
   truth is exact and free. Cheap to scale but optimistic vs real-world scans —
@@ -38,8 +43,9 @@ score/    MusicXML-vs-MusicXML, imports no engine
   [`btrkeks/polish-scores`](https://huggingface.co/datasets/btrkeks/polish-scores)
   (112 historical scans, dual MusicXML/**kern ground truth, **evaluation-only**).
 
-Mixing the two would mask the optimism in the synthetic numbers, so reports keep
-them separate.
+Just be aware when reading scores: averaging synthetic and real into one number
+masks the optimism in the synthetic part, so it's usually worth reading them
+separately.
 
 ## Install
 
