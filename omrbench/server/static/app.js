@@ -26,6 +26,9 @@ const el = (tag, attrs = {}, ...kids) => {
 
 const pct = (v) => (v == null ? "—" : `${(100 * v).toFixed(2)}%`);
 const shortDate = (iso) => (iso || "").replace("T", " ").slice(0, 19);
+// One label for a run everywhere it's named: engine, version (the thing that
+// tells two runs of the same tool apart), then date.
+const runLabel = (m) => `${m.engine}${m.engine_version ? " " + m.engine_version : ""} @ ${shortDate(m.date)}`;
 
 // the size-weighted "headline" aggregate of a run, if present
 function headline(summary) {
@@ -191,7 +194,7 @@ async function viewRun(runId, wantMetric) {
 
   app.append(el("div", { class: "breadcrumb" },
     el("a", { onclick: () => (location.hash = "#/runs") }, "Runs"),
-    ` ${meta.engine} @ ${shortDate(meta.date)}`));
+    ` ${runLabel(meta)}`));
 
   // Flag a broken/incomplete run up front (raw run.json keys here, not RunMeta).
   const banner = meta.status === "running"
@@ -253,7 +256,7 @@ async function viewRun(runId, wantMetric) {
     onchange: (e) => { if (e.target.value) location.hash = `#/compare/${runId}/${e.target.value}/${metric}`; },
   }, el("option", { value: "" }, "none"));
   const comparable = await getJSON(`/api/runs/${runId}/comparable`);
-  comparable.forEach((r) => cmp.append(el("option", { value: r.run_id }, `${r.engine} @ ${shortDate(r.date)}`)));
+  comparable.forEach((r) => cmp.append(el("option", { value: r.run_id }, runLabel(r))));
 
   const filters = el("div", { class: "filters" },
     el("label", {}, "Metric ", sel),
@@ -341,7 +344,7 @@ async function viewCase(runId, sampleId) {
 
   app.append(el("div", { class: "breadcrumb" },
     el("a", { onclick: () => (location.hash = "#/runs") }, "Runs"),
-    el("a", { onclick: () => (location.hash = `#/runs/${runId}`) }, `${meta.engine} @ ${shortDate(meta.date)}`),
+    el("a", { onclick: () => (location.hash = `#/runs/${runId}`) }, `${runLabel(meta)}`),
     ` sample ${sampleId}`));
 
   // per-sample numbers, from the run's score (computed on demand by the server)
@@ -392,8 +395,8 @@ async function viewCase(runId, sampleId) {
 async function viewCompare(runA, runB, wantMetric) {
   const [ma, mb] = await Promise.all([getJSON(`/api/runs/${runA}`), getJSON(`/api/runs/${runB}`)]);
   app.innerHTML = "";
-  const labelA = `${ma.engine} @ ${shortDate(ma.date)}`;
-  const labelB = `${mb.engine} @ ${shortDate(mb.date)}`;
+  const labelA = runLabel(ma);
+  const labelB = runLabel(mb);
   app.append(el("div", { class: "breadcrumb" },
     el("a", { onclick: () => (location.hash = `#/runs/${runA}`) }, "Runs"),
     ` ${labelA}  vs  ${labelB}`));
@@ -477,8 +480,8 @@ async function viewCompareCase(runA, runB, sampleId) {
   app.append(el("div", { class: "case-panels compare-panels" },
     panel("Source image", img),
     panel("Ground truth", refBox),
-    panel(`A · ${ma.engine} @ ${shortDate(ma.date)}`, aBox),
-    panel(`B · ${mb.engine} @ ${shortDate(mb.date)}`, bBox)));
+    panel(`A · ${runLabel(ma)}`, aBox),
+    panel(`B · ${runLabel(mb)}`, bBox)));
 
   renderNotation(refBox, `/api/file/musicxml?${qa}&side=reference`);
   renderNotation(aBox, `/api/file/musicxml?${qa}&side=prediction`);
