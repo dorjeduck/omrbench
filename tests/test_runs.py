@@ -9,6 +9,7 @@ import pytest
 from omrbench.runs import (
     Run,
     create_run_dir,
+    delete_run,
     list_runs,
     load_run,
     make_run_id,
@@ -66,6 +67,34 @@ def test_samples_field_present_on_subset_run(tmp_path):
     write_run_meta(run_dir, {"engine": "homr", "corpus": "c", "date": "d", "samples": ["0000", "0001"]})
     run = load_run(run_dir.name, runs_dir=tmp_path)
     assert run.samples == ["0000", "0001"]
+
+
+def test_delete_run_removes_the_dir(tmp_path):
+    run_dir = create_run_dir("homr", "0.6.1", WHEN, runs_dir=tmp_path)
+    write_run_meta(run_dir, {"engine": "homr", "date": WHEN.isoformat()})
+    delete_run(run_dir.name, runs_dir=tmp_path)
+    assert not run_dir.exists()
+
+
+def test_delete_run_missing_raises(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        delete_run("nope", runs_dir=tmp_path)
+
+
+def test_delete_run_refuses_non_run_dir(tmp_path):
+    plain = tmp_path / "plain"  # a dir without run.json is not a run
+    plain.mkdir()
+    with pytest.raises(FileNotFoundError):
+        delete_run("plain", runs_dir=tmp_path)
+    assert plain.exists()
+
+
+def test_delete_run_refuses_path_traversal(tmp_path):
+    outside = tmp_path.parent / "outside"
+    outside.mkdir(exist_ok=True)
+    with pytest.raises(ValueError):
+        delete_run("../outside", runs_dir=tmp_path)
+    assert outside.exists()
 
 
 def test_list_runs_newest_first_ignores_non_runs(tmp_path):

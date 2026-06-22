@@ -68,6 +68,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .panel .err { color: var(--bad); font-size: 0.85rem; }
 
 select, button { font: inherit; padding: 0.3rem 0.5rem; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+button.del { padding: 0.1rem 0.4rem; border-color: transparent; color: var(--muted); cursor: pointer; }
+button.del:hover { color: #c0392b; border-color: #c0392b; }
+.score-actions { display: inline-flex; gap: 0.4rem; }
+.score-actions button { cursor: pointer; }
+.score-actions button:disabled { opacity: 0.6; cursor: default; }
+.warn { color: #c0392b; cursor: help; }
+tr.broken td { background: #fff6f5; }
+.broken-banner { border-color: #c0392b; background: #fff6f5; color: #922; }
 
 .filters { display: flex; gap: 1.2rem; align-items: center; margin: 0.4rem 0 0.8rem; }
 .filters label { display: flex; gap: 0.4rem; align-items: center; color: var(--muted); font-size: 0.9rem; }

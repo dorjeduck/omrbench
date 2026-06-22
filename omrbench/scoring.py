@@ -14,7 +14,7 @@ from typing import Callable
 
 from omrbench.corpus import discover
 from omrbench.runs import Run
-from omrbench.score.base import Metric
+from omrbench.score.base import Metric, SampleResult
 from omrbench.score.report import Report
 
 
@@ -35,7 +35,16 @@ def score_run(
     for done, sample in enumerate(samples, 1):
         reference = sample.reference_musicxml
         if reference.exists():
-            report.samples.append(metric.score(run.prediction(sample.id), reference, sample.id))
+            prediction = run.prediction(sample.id)
+            if prediction.exists():
+                report.samples.append(metric.score(prediction, reference, sample.id))
+            else:
+                # The engine produced no prediction for this sample. That is not
+                # the same as a *wrong* prediction: scoring a missing file as
+                # 100%-wrong would let a broken/incomplete run masquerade as a
+                # real (bad) result. Mark it ok=False so it is excluded from
+                # samples_scored and the aggregates, keeping the gap visible.
+                report.samples.append(SampleResult(sample.id, ok=False, fields={}))
         if on_progress is not None:
             on_progress(done, total)
     return report

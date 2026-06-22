@@ -37,6 +37,9 @@ class RunMeta:
     date: str
     metrics: list[str]          # cached metric names for this run
     summaries: dict             # metric -> summary dict
+    status: str | None          # "running" | "complete" | None (legacy)
+    produced: int | None        # predictions the engine produced
+    attempted: int | None       # samples it tried (produced < attempted => partial)
 
 
 def _cached_scores(run: Run) -> tuple[list[str], dict]:
@@ -60,6 +63,9 @@ def _meta(run: Run) -> RunMeta:
         date=run.date,
         metrics=metrics,
         summaries=summaries,
+        status=run.status,
+        produced=run.produced,
+        attempted=run.attempted,
     )
 
 

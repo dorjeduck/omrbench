@@ -28,6 +28,28 @@ def test_comparable_runs_same_corpus_and_overlapping_samples(tmp_path, monkeypat
     assert comparable == [b]
 
 
+def test_run_meta_carries_status_and_coverage(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    run_dir = runs.create_run_dir("homr", "1.0", when)
+    (run_dir / "predictions" / "0000.musicxml").write_text("<x/>")
+    runs.write_run_meta(run_dir, {
+        "engine": "homr", "corpus": "corpus/C", "date": when.isoformat(),
+        "status": "complete", "samples_attempted": 2, "samples_produced": 1,
+    })
+    meta = next(m for m in records.list_runs() if m.run_id == run_dir.name)
+    assert meta.status == "complete"
+    assert meta.attempted == 2
+    assert meta.produced == 1            # partial run is detectable: produced < attempted
+
+
+def test_run_meta_legacy_run_has_no_status(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    legacy = _make_run("homr", datetime(2026, 1, 1, tzinfo=timezone.utc), "corpus/C", ["0000"])
+    meta = next(m for m in records.list_runs() if m.run_id == legacy)
+    assert meta.status is None and meta.produced is None and meta.attempted is None
+
+
 def test_comparable_runs_excludes_self_and_handles_none(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     only = _make_run("homr", datetime(2026, 1, 1, tzinfo=timezone.utc), "corpus/C", ["0000"])

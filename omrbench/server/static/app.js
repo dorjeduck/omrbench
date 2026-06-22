@@ -94,19 +94,34 @@ function clearCharts() {
 
 // ---- views -----------------------------------------------------------------
 
-function runRow(r, metric) {
+// A run that didn't finish or didn't produce every prediction — surfaced so a
+// broken run can't pass for a real (bad) result. Returns a message or null.
+function runWarning(r) {
+  if (r.status === "running") return "incomplete — interrupted before it finished";
+  if (r.produced != null && r.attempted != null && r.produced < r.attempted)
+    return `partial — engine produced only ${r.produced}/${r.attempted} predictions`;
+  return null;
+}
+
+function runRow(r, metric, onDelete) {
   // The score column follows the selected metric; "—" if this run lacks it.
   const s = r.summaries?.[metric];
   const h = s ? headline(s) : null;
   const scored = s ? `${s.samples_scored ?? "?"}/${s.samples_total ?? "?"}` : "—";
-  return el("tr", { class: "clickable", onclick: () => (location.hash = `#/runs/${r.run_id}/${metric}`) },
-    el("td", {}, shortDate(r.date)),
+  const del = el("button", {
+    class: "del", title: "delete this run",
+    onclick: (e) => { e.stopPropagation(); onDelete(r); },  // don't navigate on delete
+  }, "🗑");
+  const warn = runWarning(r);
+  return el("tr", { class: "clickable" + (warn ? " broken" : ""), onclick: () => (location.hash = `#/runs/${r.run_id}/${metric}`) },
+    el("td", {}, shortDate(r.date), warn ? el("span", { class: "warn", title: warn }, " ⚠") : null),
     el("td", {}, r.engine),
     el("td", {}, r.engine_version || "—"),
     el("td", {}, r.corpus),
     el("td", {}, el("span", { class: "tier" }, r.tier || "—")),
     el("td", { class: "num" }, scored),
-    el("td", { class: "num" }, h ? pct(h.value) : "—"));
+    el("td", { class: "num" }, h ? pct(h.value) : "—"),
+    el("td", { class: "num" }, del));
 }
 
 async function viewRuns() {
@@ -142,9 +157,20 @@ async function viewRuns() {
   const thead = el("thead", {}, el("tr", {},
     el("th", {}, "Date"), el("th", {}, "Engine"), el("th", {}, "Version"),
     el("th", {}, "Corpus"), el("th", {}, "Tier"),
-    el("th", { class: "num" }, "Scored"), scoreTh));
+    el("th", { class: "num" }, "Scored"), scoreTh, el("th", {})));
   const tbody = el("tbody");
   app.append(el("h2", {}, "Runs"), filters, el("div", { class: "card" }, el("table", {}, thead, tbody)));
+
+  async function onDelete(r) {
+    if (!confirm(`Delete run ${r.run_id}?\n\nThis removes its predictions and scores. Not recoverable without re-running.`)) return;
+    const resp = await fetch(`/api/runs/${r.run_id}`, { method: "DELETE" });
+    if (!resp.ok) {
+      alert(`could not delete: ${(await resp.json().catch(() => ({}))).detail || resp.statusText}`);
+      return;
+    }
+    runs.splice(runs.indexOf(r), 1);
+    draw();
+  }
 
   function draw() {
     scoreTh.textContent = `score (${fMetric})`;
@@ -152,9 +178,9 @@ async function viewRuns() {
     const rows = runs.filter((r) =>
       (fEngine === "all" || r.engine === fEngine) && (fCorpus === "all" || r.corpus === fCorpus));
     if (!rows.length) {
-      tbody.append(el("tr", {}, el("td", { colspan: "7", class: "muted" }, "no runs match")));
+      tbody.append(el("tr", {}, el("td", { colspan: "8", class: "muted" }, "no runs match")));
     }
-    rows.forEach((r) => tbody.append(runRow(r, fMetric)));
+    rows.forEach((r) => tbody.append(runRow(r, fMetric, onDelete)));
   }
   draw();
 }
@@ -167,21 +193,59 @@ async function viewRun(runId, wantMetric) {
     el("a", { onclick: () => (location.hash = "#/runs") }, "Runs"),
     ` ${meta.engine} @ ${shortDate(meta.date)}`));
 
-  // Metric selector lists only the metrics this run has been scored on (cached),
-  // so picking one never triggers a long compute in the browser.
-  const metrics = meta.metrics || [];
-  if (!metrics.length) {
-    app.append(el("div", { class: "card" }, el("p", { class: "muted" },
-      "Not scored yet — run ", el("code", {}, `omrbench score ${runId}`), " to score this run.")));
+  // Flag a broken/incomplete run up front (raw run.json keys here, not RunMeta).
+  const banner = meta.status === "running"
+    ? "⚠ This run is incomplete — it was interrupted before finishing. Its scores are not trustworthy."
+    : (meta.samples_produced != null && meta.samples_attempted != null && meta.samples_produced < meta.samples_attempted)
+      ? `⚠ This run is partial — the engine produced only ${meta.samples_produced}/${meta.samples_attempted} predictions. Missing ones are excluded from the score, not counted as wrong.`
+      : null;
+  if (banner) app.append(el("div", { class: "card broken-banner" }, banner));
+
+  // The metric selector lists only the metrics this run has already been scored
+  // on (cached). Registered metrics it lacks get a "score" button that computes
+  // them on demand (omr-ned is slow) and re-enters this view with the result.
+  const cached = meta.metrics || [];
+  const uncached = Object.keys(METRICS).filter((m) => !cached.includes(m)).sort();
+
+  function scoreActions() {
+    if (!uncached.length) return null;
+    const box = el("span", { class: "score-actions" });
+    uncached.forEach((m) => {
+      const btn = el("button", {
+        title: `compute ${m} for this run`,
+        onclick: async () => {
+          btn.disabled = true;
+          btn.textContent = `scoring ${m}…`;
+          try {
+            await getJSON(`/api/runs/${runId}/scores/${m}`);
+          } catch (e) {
+            btn.disabled = false;
+            btn.textContent = `score ${m}`;
+            alert(`could not score ${m}: ${e.message}`);
+            return;
+          }
+          viewRun(runId, m);  // m is cached now; rebuild with it selected
+        },
+      }, `score ${m}`);
+      box.append(btn);
+    });
+    return box;
+  }
+
+  if (!cached.length) {
+    const card = el("div", { class: "card" }, el("p", { class: "muted" }, "Not scored yet."));
+    const actions = scoreActions();
+    if (actions) card.append(el("div", { class: "filters" }, el("label", {}, "Score with ", actions)));
+    app.append(card);
     return;
   }
   // Honour the metric carried from the landing (or last picked) if this run has
   // it; else default.
-  let metric = metrics.includes(wantMetric) ? wantMetric
-    : metrics.includes(currentMetric) ? currentMetric
-    : metrics.includes("music21") ? "music21" : metrics[0];
+  let metric = cached.includes(wantMetric) ? wantMetric
+    : cached.includes(currentMetric) ? currentMetric
+    : cached.includes("music21") ? "music21" : cached[0];
   const sel = el("select", { onchange: (e) => { currentMetric = e.target.value; renderScore(e.target.value); } });
-  metrics.forEach((m) => sel.append(el("option", { value: m }, m)));
+  cached.forEach((m) => sel.append(el("option", { value: m }, m)));
   sel.value = metric;
 
   // Compare with: only runs on the same corpus sharing >=1 sample (server-filtered).
@@ -191,9 +255,12 @@ async function viewRun(runId, wantMetric) {
   const comparable = await getJSON(`/api/runs/${runId}/comparable`);
   comparable.forEach((r) => cmp.append(el("option", { value: r.run_id }, `${r.engine} @ ${shortDate(r.date)}`)));
 
-  app.append(el("div", { class: "filters" },
+  const filters = el("div", { class: "filters" },
     el("label", {}, "Metric ", sel),
-    el("label", {}, "Compare with ", cmp)));
+    el("label", {}, "Compare with ", cmp));
+  const actions = scoreActions();
+  if (actions) filters.append(el("label", {}, "Score with ", actions));
+  app.append(filters);
 
   const content = el("div", {});
   app.append(content);

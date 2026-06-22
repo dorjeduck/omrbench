@@ -40,6 +40,21 @@ def test_ensure_score_computes_caches_and_reuses(tmp_path):
     assert scoring.ensure_score(run, metric) == rec
 
 
+def test_score_run_marks_missing_prediction_not_ok(tmp_path):
+    # corpus has two samples; the engine failed to produce one of them.
+    run = _make_run(tmp_path, sample_ids=("0000", "0001"))
+    run.prediction("0001").unlink()  # no prediction for 0001
+
+    report = scoring.score_run(run, Music21Metric())
+    by = {s.sample_id: s for s in report.samples}
+    assert by["0000"].ok is True
+    assert by["0001"].ok is False                 # not produced -> not "100% wrong"
+
+    summary = report.to_score_record()["summary"]
+    assert summary["samples_total"] == 2
+    assert summary["samples_scored"] == 1         # the missing one is excluded, not laundered
+
+
 def test_score_run_honours_subset_selection(tmp_path):
     # corpus has two samples, but the run declares it only covered 0000
     run = _make_run(tmp_path, sample_ids=("0000", "0001"), meta_extra={"samples": ["0000"]})

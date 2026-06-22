@@ -3,6 +3,7 @@
     omrbench fetch polish-scores [--dest DIR]
     omrbench run   --engine ENGINE --corpus DIR        -> a new run under runs/
     omrbench score [RUN_ID] [--metric music21]         -> runs/<run-id>/scores/<metric>.json
+    omrbench rm    RUN_ID [RUN_ID ...] [-f]            -> delete run(s)
 
 A *run* is the unit (see DESIGN.md): `run` produces `runs/<engine>-<timestamp>/`
 holding the predictions and a `run.json` that records the engine and corpus. So
@@ -52,21 +53,33 @@ def _cmd_run(args: argparse.Namespace) -> int:
     samples = discover(Path(args.corpus))
     when = datetime.now(timezone.utc)
     run_dir = runs.create_run_dir(engine.engine, version, when)
-    results = engine.run_corpus(samples, run_dir / "predictions")
-    ok = sum(1 for v in results.values() if v)
     # Record the tool identity and version (so runs group by engine and the version
     # names/distinguishes them) for the engine-free read/score path.
+    base_meta = {
+        "engine": engine.engine,
+        "engine_version": version,
+        "command": " ".join(engine.cmd),
+        "corpus": str(args.corpus),
+        "date": when.isoformat(),
+    }
+    # Write run.json up front with status "running", so a run interrupted mid-way
+    # (Ctrl-C, crash) is a visible, flagged run rather than an invisible orphan
+    # (list_runs needs run.json). Completion overwrites it with the coverage.
+    runs.write_run_meta(run_dir, {**base_meta, "status": "running"})
+    results = engine.run_corpus(samples, run_dir / "predictions")
+    produced = sum(1 for v in results.values() if v)
+    failed = sorted(sid for sid, ok in results.items() if not ok)
     runs.write_run_meta(
         run_dir,
         {
-            "engine": engine.engine,
-            "engine_version": version,
-            "command": " ".join(engine.cmd),
-            "corpus": str(args.corpus),
-            "date": when.isoformat(),
+            **base_meta,
+            "status": "complete",
+            "samples_attempted": len(results),
+            "samples_produced": produced,
+            "samples_failed": failed,
         },
     )
-    print(f"{run_dir.name}: {ok}/{len(results)} samples produced -> {run_dir}")
+    print(f"{run_dir.name}: {produced}/{len(results)} samples produced -> {run_dir}")
 
     # Auto-score the cheap default metric so the run shows a number immediately;
     # the heavy omr-ned stays opt-in (score it explicitly).
@@ -112,6 +125,30 @@ def _cmd_score(args: argparse.Namespace) -> int:
             print(report.render())
         print(f"{run.run_id}: {metric.name} -> {run.score_path(metric.name)}")
     return 0
+
+
+def _cmd_rm(args: argparse.Namespace) -> int:
+    from omrbench import runs
+
+    code = 0
+    for run_id in args.run:
+        try:
+            run = runs.load_run(run_id)
+        except FileNotFoundError as exc:
+            print(str(exc), file=sys.stderr)
+            code = 2
+            continue
+        if not args.force:
+            preds = len(run.prediction_ids())
+            scored = sorted(p.stem for p in run.scores_dir.glob("*.json")) if run.scores_dir.is_dir() else []
+            scored_note = f", scored: {', '.join(scored)}" if scored else ""
+            answer = input(f"delete run {run_id} ({preds} predictions{scored_note})? [y/N] ")
+            if answer.strip().lower() not in ("y", "yes"):
+                print(f"skipped {run_id}")
+                continue
+        runs.delete_run(run_id)
+        print(f"deleted {run_id}")
+    return code
 
 
 def _cmd_augment(args: argparse.Namespace) -> int:
@@ -186,6 +223,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_score.add_argument("--metric", default="music21")
     p_score.set_defaults(func=_cmd_score)
+
+    p_rm = sub.add_parser("rm", help="delete one or more runs (id + predictions + scores)")
+    p_rm.add_argument("run", nargs="+", help="run id(s) to delete")
+    p_rm.add_argument("-f", "--force", action="store_true", help="delete without confirmation")
+    p_rm.set_defaults(func=_cmd_rm)
 
     p_aug = sub.add_parser("augment", help="write a degraded copy of a corpus (needs .[augment])")
     p_aug.add_argument("--corpus", required=True, help="source corpus dir")

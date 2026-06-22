@@ -51,6 +51,22 @@ class Run:
         return self.meta.get("date", "")
 
     @property
+    def status(self) -> str | None:
+        """``"running"`` while the run is producing predictions, ``"complete"``
+        once it finished. None for legacy runs written before status existed."""
+        return self.meta.get("status")
+
+    @property
+    def produced(self) -> int | None:
+        """How many predictions the engine actually produced (None on legacy
+        runs). Less than ``attempted`` means a partial/broken run."""
+        return self.meta.get("samples_produced")
+
+    @property
+    def attempted(self) -> int | None:
+        return self.meta.get("samples_attempted")
+
+    @property
     def samples(self) -> list[str] | None:
         """The sample ids this run covered, or None for a full-corpus run
         (the field is written only on a subset run)."""
@@ -103,6 +119,22 @@ def create_run_dir(
 
 def write_run_meta(run_dir: Path, meta: dict) -> None:
     (run_dir / "run.json").write_text(json.dumps(meta, indent=2))
+
+
+def delete_run(run_id: str, runs_dir: Path = RUNS_DIR) -> None:
+    """Delete a run directory and everything under it (predictions + scores).
+
+    Refuses a ``run_id`` that escapes ``runs_dir`` and a directory that isn't a
+    run (no ``run.json``), so this can't be turned into an arbitrary ``rm``."""
+    import shutil
+
+    runs_dir = Path(runs_dir).resolve()
+    run_dir = (runs_dir / run_id).resolve()
+    if runs_dir not in run_dir.parents:
+        raise ValueError(f"refusing to delete outside runs dir: {run_id!r}")
+    if not (run_dir / "run.json").is_file():
+        raise FileNotFoundError(f"no run {run_id!r} under {runs_dir}")
+    shutil.rmtree(run_dir)
 
 
 def load_run(run_id: str, runs_dir: Path = RUNS_DIR) -> Run:

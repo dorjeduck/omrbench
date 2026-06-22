@@ -39,6 +39,18 @@ def create_app() -> FastAPI:
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.delete("/api/runs/{run_id}")
+    def delete_run(run_id: str) -> dict:
+        from omrbench import runs as runs_mod
+
+        try:
+            runs_mod.delete_run(run_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True}
+
     @app.get("/api/runs/{run_id}/comparable")
     def comparable(run_id: str) -> list[dict]:
         try:
