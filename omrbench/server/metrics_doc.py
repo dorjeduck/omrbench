@@ -12,6 +12,12 @@ from __future__ import annotations
 DESCRIPTIONS: dict[str, dict] = {
     "music21": {
         "primary": "ser",
+        # ratio fields, shown as percentages by the UI. Listed as bases: a key is
+        # a percentage if it equals a base or ends in `_<base>`, so the micro_/
+        # macro_/median_/p90_… variants ride along. Mirrors the metric's own
+        # `_PERCENT` set; counts (distance, reference_length) are absent and render
+        # as integers.
+        "percent_fields": ["ser"],
         "title": "music21 SER — symbol-level edit distance",
         "summary": (
             "Both the prediction and the reference MusicXML are parsed with "
@@ -39,6 +45,9 @@ DESCRIPTIONS: dict[str, dict] = {
     },
     "omr-ned": {
         "primary": "omr_ned",
+        # ratio bases shown as percentages (see music21's note); the symbol counts
+        # (edit_distance, ref_symbols, pred_symbols) are absent and render as ints.
+        "percent_fields": ["omr_ned"],
         "title": "OMR-NED — via musicdiff",
         "summary": (
             "musicdiff's OMR Normalized Edit Distance, computed by musicdiff "

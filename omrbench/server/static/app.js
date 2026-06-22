@@ -26,6 +26,15 @@ const el = (tag, attrs = {}, ...kids) => {
 };
 
 const pct = (v) => (v == null ? "—" : `${(100 * v).toFixed(2)}%`);
+
+// Whether a numeric key is a ratio for this metric (so it renders as a percent),
+// driven by the metric's declared `percent_fields` (its ratio bases) — not by
+// guessing from key spelling. A key matches a base exactly or as `_<base>`, so
+// the micro_/macro_/median_/p90_… variants ride along. Unknown metric => no %.
+const isPctKey = (metricName, key) =>
+  (METRICS[metricName]?.percent_fields || []).some((b) => key === b || key.endsWith("_" + b));
+// Format one numeric value for a metric, as a percent or a plain number.
+const fmtVal = (metricName, key, v) => (isPctKey(metricName, key) ? pct(v) : String(v));
 const shortDate = (iso) => (iso || "").replace("T", " ").slice(0, 19);
 // A corpus is identified by its path (corpora/<name>); show just the name as a label.
 const corpusName = (p) => (p || "").replace(/^corpora\//, "");
@@ -125,7 +134,7 @@ function runRow(r, metric, onDelete) {
     el("td", {}, r.engine),
     el("td", {}, r.engine_version || "—"),
     el("td", {}, corpusName(r.corpus)),
-    el("td", { class: "num" }, s ? (h ? pct(h.value) : "scored") : "—"),
+    el("td", { class: "num" }, s ? (h ? fmtVal(metric, h.key, h.value) : "scored") : "—"),
     el("td", { class: "num" }, del));
 }
 
@@ -350,8 +359,7 @@ async function viewRun(runId, wantMetric) {
     // summary stats
     const stats = el("div", { class: "summary-list" });
     for (const [k, v] of Object.entries(rec.summary)) {
-      const isPct = k.endsWith("_ser") || k.endsWith("omr_ned");
-      stats.append(el("div", {}, el("div", { class: "k" }, k), el("div", { class: "v" }, isPct ? pct(v) : String(v))));
+      stats.append(el("div", {}, el("div", { class: "k" }, k), el("div", { class: "v" }, fmtVal(m, k, v))));
     }
     content.append(el("div", { class: "card" },
       el("h2", {}, `${m} · ${meta.corpus}`), stats,
@@ -385,12 +393,9 @@ async function viewRun(runId, wantMetric) {
         ...fieldKeys.map((k) => el("th", { class: "num" }, k)))));
     const tbody = el("tbody");
     for (const s of worst) {
-      const tr = el("tr", { class: "clickable", onclick: () => (location.hash = `#/case/${runId}/${s.id}`) },
+      const tr = el("tr", { class: "clickable", onclick: () => (location.hash = `#/case/${runId}/${s.id}/${m}`) },
         el("td", {}, s.id),
-        ...fieldKeys.map((k) => {
-          const isPct = k === primary || k.endsWith("_ser") || k.endsWith("omr_ned");
-          return el("td", { class: "num" }, isPct ? pct(s[k]) : String(s[k]));
-        }));
+        ...fieldKeys.map((k) => el("td", { class: "num" }, fmtVal(m, k, s[k]))));
       tbody.append(tr);
     }
     table.append(tbody);
@@ -400,14 +405,21 @@ async function viewRun(runId, wantMetric) {
   }
 }
 
-async function viewCase(runId, sampleId) {
+async function viewCase(runId, sampleId, wantMetric) {
   const meta = await getJSON(`/api/runs/${runId}`);
   const q = `run_id=${encodeURIComponent(runId)}&sample_id=${encodeURIComponent(sampleId)}`;
   app.innerHTML = "";
 
+  // Show the metric we arrived with (the one selected in the run view), falling
+  // back to music21. Only ever a metric this run already has cached, so loading
+  // it can't kick off a fresh (possibly slow) score from a stale URL.
+  const cached = meta.metrics || [];
+  const metric = cached.includes(wantMetric) ? wantMetric
+    : cached.includes("music21") ? "music21" : cached[0] || "music21";
+
   app.append(el("div", { class: "breadcrumb" },
     el("a", { onclick: () => (location.hash = "#/runs") }, "Runs"),
-    el("a", { onclick: () => (location.hash = `#/runs/${runId}`) }, `${runLabel(meta)}`),
+    el("a", { onclick: () => (location.hash = `#/runs/${runId}/${metric}`) }, `${runLabel(meta)}`),
     ` sample ${sampleId}`));
 
   // The ground truth here lives in the run's corpus; offer to copy it elsewhere.
@@ -415,10 +427,10 @@ async function viewCase(runId, sampleId) {
     app.append(el("div", { class: "filters" },
       copyToCorpusControl(meta.corpus, () => [sampleId])));
 
-  // per-sample numbers, from the run's score (computed on demand by the server)
+  // per-sample numbers, from the run's score for the selected metric
   let rec = null;
   try {
-    rec = await getJSON(`/api/runs/${runId}/scores/music21`);
+    rec = await getJSON(`/api/runs/${runId}/scores/${metric}`);
   } catch (_) { /* unscored / unscorable: still show the files below */ }
   if (rec) {
     const sample = rec.samples.find((s) => s.id === sampleId);
@@ -426,10 +438,9 @@ async function viewCase(runId, sampleId) {
       const stats = el("div", { class: "summary-list" });
       for (const [k, v] of Object.entries(sample)) {
         if (k === "id" || k === "ok") continue;
-        const isPct = k.endsWith("_ser") || k.endsWith("omr_ned");
-        stats.append(el("div", {}, el("div", { class: "k" }, k), el("div", { class: "v" }, isPct ? pct(v) : String(v))));
+        stats.append(el("div", {}, el("div", { class: "k" }, k), el("div", { class: "v" }, fmtVal(metric, k, v))));
       }
-      app.append(el("div", { class: "card" }, stats));
+      app.append(el("div", { class: "card" }, el("h3", {}, metric), stats));
     }
   }
 
@@ -500,8 +511,8 @@ async function viewCompare(runA, runB, wantMetric) {
     const ha = headline(ra.summary), hb = headline(rb.summary);
     content.append(el("div", { class: "card" }, el("h2", {}, `${m} · ${ma.corpus}`),
       el("div", { class: "summary-list" },
-        el("div", {}, el("div", { class: "k" }, `A · ${labelA}`), el("div", { class: "v" }, ha ? pct(ha.value) : "—")),
-        el("div", {}, el("div", { class: "k" }, `B · ${labelB}`), el("div", { class: "v" }, hb ? pct(hb.value) : "—")))));
+        el("div", {}, el("div", { class: "k" }, `A · ${labelA}`), el("div", { class: "v" }, ha ? fmtVal(m, ha.key, ha.value) : "—")),
+        el("div", {}, el("div", { class: "k" }, `B · ${labelB}`), el("div", { class: "v" }, hb ? fmtVal(m, hb.key, hb.value) : "—")))));
 
     // align per-sample by id; primary is lower=better, so delta = A - B
     const aBy = {}, bBy = {};
@@ -518,9 +529,9 @@ async function viewCompare(runA, runB, wantMetric) {
       sorted.slice(0, 25).forEach((r) => tb.append(
         el("tr", { class: "clickable", onclick: () => (location.hash = `#/comparecase/${runA}/${runB}/${r.id}`) },
           el("td", {}, r.id),
-          el("td", { class: "num" }, pct(r.a)),
-          el("td", { class: "num" }, pct(r.b)),
-          el("td", { class: "num" }, pct(r.d)))));
+          el("td", { class: "num" }, fmtVal(m, primary, r.a)),
+          el("td", { class: "num" }, fmtVal(m, primary, r.b)),
+          el("td", { class: "num" }, fmtVal(m, primary, r.d)))));
       table.append(tb);
       content.append(el("h2", {}, title), el("div", { class: "card" }, table));
     };
@@ -822,7 +833,7 @@ async function route() {
     else if (parts[0] === "corpora") await viewCorpora();
     else if (parts[0] === "comparecase") await viewCompareCase(parts[1], parts[2], parts[3]);
     else if (parts[0] === "compare") await viewCompare(parts[1], parts[2], parts[3]);
-    else if (parts[0] === "case") await viewCase(parts[1], parts[2]);
+    else if (parts[0] === "case") await viewCase(parts[1], parts[2], parts[3]);
     else if (parts[0] === "runs" && parts[1]) await viewRun(parts[1], parts[2]);
     else await viewRuns();
   } catch (e) {
