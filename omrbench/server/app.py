@@ -32,6 +32,40 @@ def create_app() -> FastAPI:
     def runs() -> list[dict]:
         return [asdict(r) for r in records.list_runs()]
 
+    @app.post("/api/runs")
+    def start_run(
+        engine: str = Form(...), version: str = Form(""), corpus: str = Form(...)
+    ) -> dict:
+        # Launch an engine run (images -> predictions) in the background; the
+        # client polls /run-progress. Engine-free: runs_jobs shells out via the
+        # adapter, like the CLI's `run`.
+        from omrbench.server import runs_jobs
+
+        try:
+            return runs_jobs.start(engine, version, corpus)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=exc.args[0]) from exc
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/runs/{run_id}/run-progress")
+    def run_progress(run_id: str) -> dict:
+        from omrbench.server import runs_jobs
+
+        try:
+            return runs_jobs.status(run_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/runs/{run_id}/stop")
+    def stop_run(run_id: str) -> dict:
+        from omrbench.server import runs_jobs
+
+        try:
+            return runs_jobs.cancel(run_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @app.get("/api/runs/{run_id}")
     def run(run_id: str) -> dict:
         try:
@@ -245,6 +279,73 @@ def create_app() -> FastAPI:
     def corpus_musicxml(corpus_id: str = Query(...), sample_id: str = Query(...)) -> FileResponse:
         path = _safe(records.corpus_sample_paths(corpus_id, sample_id).reference)
         return FileResponse(path, media_type="application/xml")
+
+    # --- engine config (read-write) ----------------------------------------
+    # The Engines admin page edits omrbench.toml. Engine-free, like the corpora
+    # routes: omrbench.engines only reads/writes config strings and lists adapter
+    # names — no OMR engine is imported here. An entry is identified by the pair
+    # engine + version, passed as query params on update/delete.
+
+    @app.get("/api/engine-config")
+    def engine_config() -> dict:
+        from omrbench import engines
+
+        return {
+            "entries": engines.list_config_entries(),
+            "adapters": engines.available_adapters(),
+        }
+
+    @app.post("/api/engine-config")
+    def add_engine(
+        engine: str = Form(...),
+        version: str = Form(...),
+        cmd: str = Form(...),
+        cwd: str = Form(""),
+        adapter: str = Form(""),
+    ) -> dict:
+        from omrbench import engines
+
+        entry = {"engine": engine, "version": version, "cmd": cmd, "cwd": cwd, "adapter": adapter}
+        try:
+            engines.add_config_entry(entry)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=409, detail=exc.args[0]) from exc
+        return {"ok": True}
+
+    @app.put("/api/engine-config")
+    def edit_engine(
+        engine: str = Query(...),
+        version: str = Query(...),
+        new_engine: str = Form(..., alias="engine"),
+        new_version: str = Form(..., alias="version"),
+        cmd: str = Form(...),
+        cwd: str = Form(""),
+        adapter: str = Form(""),
+    ) -> dict:
+        from omrbench import engines
+
+        entry = {"engine": new_engine, "version": new_version, "cmd": cmd, "cwd": cwd, "adapter": adapter}
+        try:
+            engines.update_config_entry(engine, version, entry)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except KeyError as exc:
+            msg = exc.args[0]
+            status = 409 if "already exists" in msg else 404
+            raise HTTPException(status_code=status, detail=msg) from exc
+        return {"ok": True}
+
+    @app.delete("/api/engine-config")
+    def remove_engine(engine: str = Query(...), version: str = Query(...)) -> dict:
+        from omrbench import engines
+
+        try:
+            engines.delete_config_entry(engine, version)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=exc.args[0]) from exc
+        return {"ok": True}
 
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
     return app

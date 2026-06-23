@@ -9,6 +9,7 @@ computed and cached to `runs/<run-id>/scores/<metric>.json`, reused thereafter.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Callable
 
@@ -56,7 +57,12 @@ def write_score(run: Run, report: Report) -> dict:
     record = report.to_score_record()
     path = run.score_path(report.metric.name)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(record, indent=2))
+    # Atomic write: the server scores in a child process it may kill at any
+    # moment (see server/jobs.py). os.replace is atomic, so a kill leaves either
+    # no file or the complete one — never a truncated, unparseable cache.
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(record, indent=2))
+    os.replace(tmp, path)
     return record
 
 

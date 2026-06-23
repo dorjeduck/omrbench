@@ -19,8 +19,9 @@ fetch = ["datasets>=2.18", "huggingface_hub>=0.23", "pillow>=10.0"]
 omr-ned = ["musicdiff>=5.2"]
 # Only needed for the local web UI (`omrbench serve`). The frontend (Verovio,
 # Chart.js) loads from CDN in the browser, so no extra Python deps for it.
-# python-multipart backs the corpus sample-upload form.
-serve = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
+# python-multipart backs the corpus sample-upload form; tomlkit round-trips
+# omrbench.toml when the Engines page edits it (preserving its comments).
+serve = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9", "tomlkit>=0.12"]
 # Only needed for `omrbench augment` (synthetic-corpus image degradation).
 augment = ["pillow>=10.0"]
 # Only needed to run the test suite (`pytest`); augment tests need Pillow.

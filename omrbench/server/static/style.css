@@ -1,3 +1,4 @@
+/* === Design tokens === */
 :root {
   --bg: #fafafa;
   --fg: #1c1c1c;
@@ -8,6 +9,7 @@
   --panel: #fff;
 }
 
+/* === Base === */
 * { box-sizing: border-box; }
 
 body {
@@ -17,6 +19,10 @@ body {
   background: var(--bg);
 }
 
+a { color: var(--accent); cursor: pointer; }
+.muted { color: var(--muted); }
+
+/* === Header / nav / page frame === */
 header {
   display: flex;
   align-items: baseline;
@@ -29,76 +35,168 @@ header {
   z-index: 10;
 }
 header h1 { margin: 0; font-size: 1.1rem; letter-spacing: 0.02em; }
+
 nav a { margin-right: 1rem; text-decoration: none; color: var(--muted); }
 nav a.active { color: var(--accent); font-weight: 600; }
 
 main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
-
 h2 { font-size: 1rem; margin: 0 0 0.8rem; }
-.muted { color: var(--muted); }
-a { color: var(--accent); cursor: pointer; }
-
-table { border-collapse: collapse; width: 100%; background: var(--panel); }
-th, td { text-align: left; padding: 0.4rem 0.7rem; border-bottom: 1px solid var(--line); }
-th { font-weight: 600; color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
-tr.clickable:hover { background: #f0f6ff; cursor: pointer; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-
-.kind { font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 3px; background: #eee; color: #555; }
-
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1rem; margin-bottom: 1.2rem; }
-.card > h3 { margin: 0 0 0.7rem; font-size: 0.95rem; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
-.chart-box { position: relative; height: 280px; }
 
 .breadcrumb { margin-bottom: 1rem; color: var(--muted); }
 .breadcrumb a::after { content: " ›"; color: var(--muted); }
 
+/* === Tables === */
+table { border-collapse: collapse; width: 100%; background: var(--panel); }
+th, td { text-align: left; padding: 0.4rem 0.7rem; border-bottom: 1px solid var(--line); }
+th {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+tr.clickable:hover { background: #f0f6ff; cursor: pointer; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* === Cards & layout grids === */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1.2rem;
+}
+.card > h3 { margin: 0 0 0.7rem; font-size: 0.95rem; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
+.chart-box { position: relative; height: 280px; }
+
+/* === Summary list (the per-metric headline numbers) === */
 .summary-list { display: flex; flex-wrap: wrap; gap: 1.5rem; }
 .summary-list div { font-variant-numeric: tabular-nums; }
 .summary-list .k { color: var(--muted); font-size: 0.8rem; }
 .summary-list .v { font-size: 1.2rem; }
 
+/* === Case / compare panels (image | reference | prediction) === */
 .case-panels { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
 .compare-panels { grid-template-columns: 1fr 1fr; }  /* image|reference, then A|B */
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 0.8rem; overflow: auto; }
-.panel h3 { margin: 0 0 0.6rem; font-size: 0.85rem; color: var(--muted); display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.8rem;
+  overflow: auto;
+}
+.panel h3 {
+  margin: 0 0 0.6rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
 .open-link { font-size: 0.8rem; white-space: nowrap; }
 .panel img { max-width: 100%; }
 .panel svg { max-width: 100%; height: auto; }
 .panel .err { color: var(--bad); font-size: 0.85rem; }
 
-select, button, input, textarea { font: inherit; padding: 0.3rem 0.5rem; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+/* === Controls (inputs and buttons) === */
+select, button, input, textarea {
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+}
 textarea { margin-bottom: 0.6rem; font-family: ui-monospace, monospace; }
-.meta-list { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0; }
-.meta-list dt { font-family: ui-monospace, monospace; color: var(--accent); }
-.meta-list dd { margin: 0; }
-button.del { padding: 0.1rem 0.4rem; border-color: transparent; color: var(--muted); cursor: pointer; }
-button.del:hover { color: #c0392b; border-color: #c0392b; }
-button.danger { color: var(--bad); border-color: var(--bad); cursor: pointer; }
-button.danger:disabled { opacity: 0.5; cursor: default; }
-.score-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-button.action { background: var(--accent); color: #fff; border-color: var(--accent); cursor: pointer; font-weight: 600; }
+
+button.action {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+}
 button.action:hover { filter: brightness(1.08); }
 button.action:disabled { opacity: 0.6; cursor: default; }
+
+button.del { padding: 0.1rem 0.4rem; border-color: transparent; color: var(--muted); cursor: pointer; }
+button.del:hover { color: #c0392b; border-color: #c0392b; }
+
+button.danger { color: var(--bad); border-color: var(--bad); cursor: pointer; }
+button.danger:disabled { opacity: 0.5; cursor: default; }
+
+button.stop-btn { color: var(--bad); border-color: var(--bad); cursor: pointer; }
+button.stop-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* === Definition lists (run metadata, etc.) === */
+.meta-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 1rem;
+  margin: 0;
+}
+.meta-list dt { font-family: ui-monospace, monospace; color: var(--accent); }
+.meta-list dd { margin: 0; }
+
+/* === Scoring box & progress bar === */
 .score-box { border-color: var(--accent); background: #f5f9ff; }
 .score-box h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
 .score-box p { margin: 0 0 0.7rem; }
+.score-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .score-cell { display: flex; flex-direction: column; gap: 0.35rem; }
 .score-controls { display: flex; gap: 0.5rem; align-items: center; }
-button.stop-btn { color: var(--bad); border-color: var(--bad); cursor: pointer; }
-button.stop-btn:disabled { opacity: 0.6; cursor: default; }
-.progress { display: none; height: 6px; width: 100%; min-width: 180px; background: #d6e4f5; border-radius: 3px; overflow: hidden; }
+
+.progress {
+  display: none;
+  height: 6px;
+  width: 100%;
+  min-width: 180px;
+  background: #d6e4f5;
+  border-radius: 3px;
+  overflow: hidden;
+}
 .progress.active { display: block; }
 .progress-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.3s ease; }
+
+/* === Status flags === */
+.kind { font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 3px; background: #eee; color: #555; }
 .warn { color: #c0392b; cursor: help; }
 tr.broken td { background: #fff6f5; }
 .broken-banner { border-color: #c0392b; background: #fff6f5; color: #922; }
 
+/* === Filter / action bar (one-line control row) === */
 .filters { display: flex; gap: 1.2rem; align-items: center; margin: 0.4rem 0 0.8rem; }
+/* Inside a card the card's own padding is the spacing; drop the flow margin so
+   the row sits centred, not high. */
+.card > .filters { margin: 0; }
 .filters label { display: flex; gap: 0.4rem; align-items: center; color: var(--muted); font-size: 0.9rem; }
 
+/* === Form grid ===
+   A label column + a control column, so every control shares one left edge and
+   one width. align-items:baseline lines each label up with its input's text
+   baseline — so labels stay put even when a control cell also holds a hint line
+   below the input. Never use .filters for a multi-field form. */
+.form {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.8rem 1rem;
+  align-items: baseline;
+  max-width: 560px;
+}
+.form > label { color: var(--muted); font-size: 0.9rem; text-align: right; }
+.form > .control { display: grid; gap: 0.3rem; }
+.form input, .form select { width: 100%; }
+.form .hint { color: var(--muted); font-size: 0.8rem; }
+.form .actions { display: flex; gap: 0.6rem; grid-column: 1 / -1; justify-content: flex-end; }
+
+/* === Metric documentation page === */
 .metric-doc h2 { margin-top: 0; }
-.metric-doc dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0.6rem 0; }
+.metric-doc dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 1rem;
+  margin: 0.6rem 0;
+}
 .metric-doc dt { font-family: ui-monospace, monospace; color: var(--accent); }
 .metric-doc .notes { color: var(--muted); font-style: italic; }

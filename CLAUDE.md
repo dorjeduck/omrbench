@@ -136,6 +136,48 @@ when selected (mirror how `omr-ned` lazy-imports `musicdiff`, and put such deps
 in their own extra). No change to `report.py`/`cli.py` should be needed; if one
 is, the contract is leaking and the change is suspect.
 
+## Frontend rules
+
+The web UI is **vanilla JS, no framework, no build step**: one `app.js` of
+hash-routed `view*()` functions building DOM through the `el()` helper, one
+`style.css`, heavy libs (Verovio, Chart.js) from CDN only. The server
+(`server/app.py`) stays the thin engine-free read/write layer — routes are calls
+into `records`/`corpus`/`engines`, never benchmark logic. Keep it this way; do
+not introduce a framework, bundler, or npm step for a skeleton-stage tool.
+
+These rules exist because UI bugs here are usually **deducible from the code, not
+the pixels** — if a layout is wrong it's wrong by construction, so reason about
+it before claiming it's done.
+
+- **Layout is CSS's job; never fake it with per-element sizing.** Width and
+  alignment come from a CSS rule (a grid track, `width`, `flex`), not from
+  `size=` / hand-guessed pixel counts on inputs. If you find yourself setting
+  `size` to make things line up, the container is wrong.
+- **A form is a two-column grid, not a stack of inline rows.** Label column +
+  control column; every control shares one left edge and one width. `.filters`
+  (inline flex) is for a *one-line* filter/action bar only — never a multi-field
+  form. Stacking `.filters` rows is what staircases. Use the form grid primitive
+  (build one if absent — don't re-roll raw layout per form).
+- **Reuse the vocabulary before authoring layout.** Compose existing classes
+  (`.card`, `.filters`, `.action`, `.del`, `.panel`, `.summary-list`, the form
+  grid) and helpers (`el`, `getJSON`). If you're hand-rolling the same layout a
+  third time, factor a primitive instead of repeating raw `el()` trees.
+- **Build DOM with `el()`, not innerHTML, for any value from data.** `el()`
+  text-nodes its children, which escapes them; `{ html }` / `innerHTML` is only
+  for trusted, code-authored markup.
+- **Mutations re-render, they don't hand-patch.** On a successful POST/PUT/
+  DELETE, re-call the view function (re-fetch from the API) — the pattern every
+  existing admin view uses. On failure, `alert()` the backend's `detail`
+  (`(await r.json().catch(() => ({}))).detail || r.statusText`), never a bare
+  status.
+- **Label for the user, name keys for the machine.** Visible labels are plain
+  words ("command to run", not the TOML key `cmd`); the raw key names live in the
+  request body and the on-disk file, not the UI chrome. Don't repeat a field's
+  label inside its own placeholder — the placeholder is an example or nothing.
+- **Verify the rendered page before saying it's done.** At minimum re-read the
+  built DOM for the column/alignment rules above; for visual changes, render and
+  look. Do not report a UI change complete on the strength of "the code runs".
+
 ## Conventions
 
 - Code license is **MIT** (corpus data carries its own licenses — see READMEs).

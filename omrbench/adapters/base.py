@@ -13,6 +13,7 @@ import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Callable
 
 from omrbench.corpus import Sample
 
@@ -58,15 +59,23 @@ class Adapter(ABC):
         None when neither is available (the CLI treats that as an error)."""
         return self.declared_version or self.version()
 
-    def run_corpus(self, samples: list[Sample], out_dir: Path) -> dict[str, bool]:
+    def run_corpus(
+        self,
+        samples: list[Sample],
+        out_dir: Path,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> dict[str, bool]:
         out_dir.mkdir(parents=True, exist_ok=True)
         results: dict[str, bool] = {}
-        for sample in samples:
+        total = len(samples)
+        for done, sample in enumerate(samples, 1):
             out_path = out_dir / f"{sample.id}.musicxml"
             if out_path.exists() and out_path.stat().st_size > 0:
                 results[sample.id] = True  # cached
-                continue
-            results[sample.id] = self.predict(sample, out_path)
+            else:
+                results[sample.id] = self.predict(sample, out_path)
+            if on_progress is not None:
+                on_progress(done, total)
         return results
 
 

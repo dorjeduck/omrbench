@@ -25,6 +25,31 @@ const el = (tag, attrs = {}, ...kids) => {
   return n;
 };
 
+// A stacked form (see CLAUDE.md Frontend rules): append [label, control] pairs
+// into a `.form` grid so every control shares one left edge and width. `control`
+// is a single input/select or a composed node; widths come from CSS, never a
+// `size=` guess. `hint` is optional helper text under the control.
+const formGrid = () => el("div", { class: "form" });
+function formRow(form, labelText, control, hint) {
+  form.append(el("label", {}, labelText));
+  const cell = el("div", { class: "control" }, control);
+  if (hint) cell.append(el("div", { class: "hint" }, hint));
+  form.append(cell);
+}
+
+// A titled "create / launch" card: an h3 header over a one-line `.filters` row of
+// controls. The shared shape for the app's small create-controls (New run, New
+// corpus) so they stop diverging into box / no-box one-offs. Bigger multi-field
+// create forms (Add Engine/Version, Add a sample) use the `.form` grid inside a card.
+const createBar = (title, ...controls) =>
+  el("div", { class: "card" }, el("h3", {}, title), el("div", { class: "filters" }, ...controls));
+
+// The action row for a `.form` grid: buttons in a footer that spans both columns
+// and right-aligns (the standard form-actions placement), instead of an
+// empty-label cell that indents the button into the control column.
+const formActions = (form, ...buttons) =>
+  form.append(el("div", { class: "actions" }, ...buttons));
+
 const pct = (v) => (v == null ? "—" : `${(100 * v).toFixed(2)}%`);
 
 // Whether a numeric key is a ratio for this metric (so it renders as a percent),
@@ -138,11 +163,101 @@ function runRow(r, metric, onDelete) {
     el("td", { class: "num" }, del));
 }
 
+// The "New run" launcher: an inline action bar, like the Compare control and the
+// Filter bar below it — pick an engine install (one omrbench.toml entry = engine
+// + version) and a corpus, POST to start it. Selects size to their content; this
+// is intentionally NOT a .form grid (that stretches every control to full column
+// width, which a two-field launcher doesn't want). onStarted re-renders the view.
+function newRunBar(entries, corpora, onStarted) {
+  const engineSel = el("select");
+  if (!entries.length) engineSel.append(el("option", { value: "" }, "no engines configured"));
+  entries.forEach((e, i) => engineSel.append(el("option", { value: String(i) }, `${e.engine} ${e.version}`)));
+  const corpusSel = el("select");
+  if (!corpora.length) corpusSel.append(el("option", { value: "" }, "no corpora"));
+  corpora.forEach((c) => corpusSel.append(el("option", { value: c.path }, corpusName(c.path))));
+
+  const start = el("button", { class: "action" }, "Start");
+  start.addEventListener("click", async () => {
+    const e = entries[Number(engineSel.value)];
+    if (!e || !corpusSel.value) return alert("pick an engine and a corpus");
+    start.disabled = true; start.textContent = "starting…";
+    const fd = new FormData();
+    fd.append("engine", e.engine);
+    fd.append("version", String(e.version));
+    fd.append("corpus", corpusSel.value);
+    const r = await fetch("/api/runs", { method: "POST", body: fd });
+    start.disabled = false; start.textContent = "Start";
+    if (!r.ok) return alert(`could not start run: ${(await r.json().catch(() => ({}))).detail || r.statusText}`);
+    onStarted();
+  });
+
+  return createBar("New run",
+    el("label", {}, "engine ", engineSel),
+    el("label", {}, "corpus ", corpusSel),
+    start);
+}
+
+// The Running section: one live row per in-progress run, polling /run-progress.
+// onChange re-renders the Runs view when a run finishes or is stopped.
+function runningCard(running, onChange) {
+  if (!running.length) return null;
+  const box = el("div", { class: "card score-box" });
+  box.append(el("h3", {}, "Running"));
+  running.forEach((r) => box.append(runningRow(r, onChange)));
+  return box;
+}
+
+function runningRow(r, onChange) {
+  const label = el("span", {}, `${r.engine}${r.engine_version ? " " + r.engine_version : ""} · ${corpusName(r.corpus)}`);
+  const status = el("span", { class: "muted" }, "starting…");
+  const stop = el("button", { class: "stop-btn" }, "Stop");
+  const fill = el("div", { class: "progress-fill" });
+  const bar = el("div", { class: "progress active" }, fill);
+  const row = el("div", { class: "score-cell" },
+    el("div", { class: "score-controls" }, label, status, stop), bar);
+
+  const poll = async () => {
+    if (!row.isConnected) return;  // a re-render replaced this row; stop polling
+    let p;
+    try { p = await getJSON(`/api/runs/${r.run_id}/run-progress`); }
+    catch (e) { status.textContent = `lost track: ${e.message}`; return; }
+    if (p.status === "complete" || p.status === "cancelled") { onChange(); return; }
+    if (p.status === "error") { status.textContent = `error: ${p.error}`; stop.style.display = "none"; bar.classList.remove("active"); return; }
+    status.textContent = p.total ? `${p.done}/${p.total}` : "running…";
+    fill.style.width = p.total ? `${Math.round((100 * p.done) / p.total)}%` : "0%";
+    setTimeout(poll, 1000);
+  };
+
+  stop.addEventListener("click", async () => {
+    if (!confirm(`Stop run ${r.run_id}?\n\nThe predictions produced so far are kept as a flagged partial run.`)) return;
+    stop.disabled = true; status.textContent = "stopping…";
+    const resp = await fetch(`/api/runs/${r.run_id}/stop`, { method: "POST" });
+    if (!resp.ok) { stop.disabled = false; alert(`could not stop: ${(await resp.json().catch(() => ({}))).detail || resp.statusText}`); return; }
+    onChange();
+  });
+
+  poll();
+  return row;
+}
+
 async function viewRuns() {
-  const runs = await getJSON("/api/runs");
+  const [runs, cfg, corpora] = await Promise.all([
+    getJSON("/api/runs"),
+    getJSON("/api/engine-config"),
+    getJSON("/api/corpora"),
+  ]);
   app.innerHTML = "";
+  app.append(el("h2", {}, "Runs"));
+  app.append(newRunBar(cfg.entries, corpora, viewRuns));
+
+  // In-progress runs get their own section: they have no score yet, so they
+  // would not appear in the per-metric tables below. On complete/stop the row
+  // re-renders the view (via viewRuns), dropping the run into the tables.
+  const runningBox = runningCard(runs.filter((r) => r.status === "running"), viewRuns);
+  if (runningBox) app.append(runningBox);
+
   if (!runs.length) {
-    app.append(el("p", { class: "muted" }, "No runs yet. Run `omrbench run --engine … --corpus …` to create one."));
+    app.append(el("p", { class: "muted" }, "No completed runs yet. Start one above."));
     return;
   }
 
@@ -174,7 +289,7 @@ async function viewRuns() {
     el("label", {}, "metric ", filterSelect(metrics, fMetric, (v) => { fMetric = runsFilter.metric = v; draw(); })));
 
   const container = el("div", {});
-  app.append(el("h2", {}, "Runs"), filters, container);
+  app.append(filters, container);
 
   async function onDelete(r) {
     if (!confirm(`Delete run ${r.run_id}?\n\nThis removes its predictions and scores. Not recoverable without re-running.`)) return;
@@ -268,12 +383,8 @@ async function viewRun(runId, wantMetric) {
         if (p.status === "error") { idle(); alert(`could not score ${m}: ${p.error}`); return; }
         if (p.status === "idle") { idle(); return; }  // stopped — work discarded
         running();
-        if (p.status === "cancelling") {
-          btn.textContent = "stopping…"; stop.disabled = true;
-        } else {
-          btn.textContent = p.total ? `scoring ${m}… ${p.done}/${p.total}` : "scoring…";
-          fill.style.width = p.total ? `${Math.round((100 * p.done) / p.total)}%` : "0%";
-        }
+        btn.textContent = p.total ? `scoring ${m}… ${p.done}/${p.total}` : "scoring…";
+        fill.style.width = p.total ? `${Math.round((100 * p.done) / p.total)}%` : "0%";
         setTimeout(poll, 1000);
       };
 
@@ -291,9 +402,9 @@ async function viewRun(runId, wantMetric) {
         catch (e) { stop.disabled = false; alert(`could not stop: ${e.message}`); }
       });
 
-      // On load, reconnect to a job already running (or being cancelled).
+      // On load, reconnect to a job already running.
       getJSON(`/api/runs/${runId}/scores/${m}/progress`)
-        .then((p) => { if (p.status === "running" || p.status === "cancelling") poll(); })
+        .then((p) => { if (p.status === "running") poll(); })
         .catch(() => {});
     });
     box.append(row);
@@ -588,6 +699,98 @@ async function viewMetrics() {
   }
 }
 
+// ---- engines ---------------------------------------------------------------
+
+// The original engine+version of the row being edited, or null when the form is
+// adding a fresh entry. Drives whether Save POSTs (add) or PUTs (update).
+let engineEditing = null;
+
+async function viewEngines() {
+  const { entries, adapters } = await getJSON("/api/engine-config");
+  app.innerHTML = "";
+  app.append(el("h2", {}, "Engines"));
+
+  // Add / edit form -------------------------------------------------------
+  const engineIn = el("input", { type: "text", placeholder: "e.g. homr" });
+  const versionIn = el("input", { type: "text", placeholder: "e.g. 0.6.2" });
+  const cmdIn = el("input", { type: "text", placeholder: "e.g. poetry run homr" });
+  const cwdIn = el("input", { type: "text", placeholder: "e.g. /path/to/homr" });
+  const adapterSel = el("select", {}, el("option", { value: "" }, "same as engine"));
+  adapters.forEach((a) => adapterSel.append(el("option", { value: a }, a)));
+
+  const title = el("h2", {}, "Add Engine/Version");
+  const save = el("button", { class: "action" }, "Add");
+  const resetBtn = el("button", { style: "display:none" }, "New Engine/Version");
+
+  function setEditing(entry) {
+    engineEditing = entry ? { engine: entry.engine, version: String(entry.version) } : null;
+    engineIn.value = entry?.engine || "";
+    versionIn.value = entry ? String(entry.version) : "";
+    cmdIn.value = entry?.cmd || "";
+    cwdIn.value = entry?.cwd || "";
+    adapterSel.value = entry?.adapter || "";
+    title.textContent = entry ? `Edit ${entry.engine}@${entry.version}` : "Add Engine/Version";
+    save.textContent = entry ? "Save" : "Add";
+    resetBtn.style.display = entry ? "" : "none";
+  }
+  resetBtn.addEventListener("click", () => setEditing(null));
+
+  save.addEventListener("click", async () => {
+    if (!engineIn.value.trim() || !versionIn.value.trim() || !cmdIn.value.trim())
+      return alert("engine, version and command are required");
+    const fd = new FormData();
+    fd.append("engine", engineIn.value.trim());
+    fd.append("version", versionIn.value.trim());
+    fd.append("cmd", cmdIn.value.trim());
+    fd.append("cwd", cwdIn.value.trim());
+    fd.append("adapter", adapterSel.value);
+    const url = engineEditing
+      ? `/api/engine-config?engine=${encodeURIComponent(engineEditing.engine)}&version=${encodeURIComponent(engineEditing.version)}`
+      : "/api/engine-config";
+    const r = await fetch(url, { method: engineEditing ? "PUT" : "POST", body: fd });
+    if (!r.ok) return alert(`could not save: ${(await r.json().catch(() => ({}))).detail || r.statusText}`);
+    engineEditing = null;
+    viewEngines();
+  });
+
+  const form = formGrid();
+  formRow(form, "engine", engineIn);
+  formRow(form, "version", versionIn);
+  formRow(form, "command", cmdIn);
+  formRow(form, "working directory", cwdIn, "Where the command runs. Leave blank to use wherever omrbench was launched.");
+  formRow(form, "adapter", adapterSel, "The driver code that talks to the engine. Defaults to the engine name.");
+  formActions(form, save, resetBtn);
+  app.append(el("div", { class: "card" }, title, form));
+
+  // Table -----------------------------------------------------------------
+  if (!entries.length) {
+    app.append(el("p", { class: "muted" }, "No engines declared yet. Add one above."));
+    return;
+  }
+  const thead = el("thead", {}, el("tr", {},
+    el("th", {}, "Engine"), el("th", {}, "Version"), el("th", {}, "Command"),
+    el("th", {}, "Directory"), el("th", {}, "Adapter"), el("th", {})));
+  const tbody = el("tbody");
+  entries.forEach((e) => {
+    const del = el("button", { class: "del", title: "delete this engine version",
+      onclick: async (ev) => {
+        ev.stopPropagation();
+        if (!confirm(`Delete engine ${e.engine}@${e.version}?`)) return;
+        const r = await fetch(`/api/engine-config?engine=${encodeURIComponent(e.engine)}&version=${encodeURIComponent(e.version)}`, { method: "DELETE" });
+        if (!r.ok) return alert(`could not delete: ${(await r.json().catch(() => ({}))).detail || r.statusText}`);
+        viewEngines();
+      } }, "🗑");
+    tbody.append(el("tr", { class: "clickable", title: "edit this engine version", onclick: () => setEditing(e) },
+      el("td", {}, e.engine),
+      el("td", {}, String(e.version)),
+      el("td", {}, e.cmd || "—"),
+      el("td", {}, e.cwd || "—"),
+      el("td", {}, e.adapter || el("span", { class: "muted" }, e.engine)),
+      el("td", { class: "num" }, del)));
+  });
+  app.append(el("div", { class: "card" }, el("table", {}, thead, tbody)));
+}
+
 // ---- corpora ---------------------------------------------------------------
 
 // "Copy to corpus" — the push side of curation. Given a source corpus and a
@@ -629,8 +832,8 @@ async function viewCorpora() {
   app.innerHTML = "";
   app.append(el("h2", {}, "Corpora"));
 
-  // New-corpus form: just a name (a single safe path segment).
-  const nameIn = el("input", { type: "text", placeholder: "corpus name", size: "20" });
+  // New-corpus control: just a name (a single safe path segment).
+  const nameIn = el("input", { type: "text", placeholder: "corpus name" });
   const create = el("button", {
     class: "action",
     onclick: async () => {
@@ -642,8 +845,7 @@ async function viewCorpora() {
       viewCorpora();
     },
   }, "Create");
-  app.append(el("div", { class: "filters" },
-    el("label", {}, "New corpus — name ", nameIn), create));
+  app.append(createBar("New corpus", el("label", {}, "name ", nameIn), create));
 
   if (!corpora.length) {
     app.append(el("p", { class: "muted" }, "No corpora yet. Create one above or `omrbench fetch …`."));
@@ -828,6 +1030,7 @@ async function route() {
   app.innerHTML = '<p class="muted">Loading…</p>';
   try {
     if (parts[0] === "metrics") await viewMetrics();
+    else if (parts[0] === "engines") await viewEngines();
     else if (parts[0] === "corpora" && parts[2]) await viewCorpusSample(decodeURIComponent(parts[1]), decodeURIComponent(parts[2]));
     else if (parts[0] === "corpora" && parts[1]) await viewCorpus(decodeURIComponent(parts[1]));
     else if (parts[0] === "corpora") await viewCorpora();
