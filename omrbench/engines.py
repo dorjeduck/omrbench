@@ -90,12 +90,14 @@ def load_engine(engine: str, version: str | None = None, config: Path | None = N
             f"known adapters: {known}"
         )
 
+    timeout = entry.get("timeout")
     return REGISTRY[adapter_type](
         name=_ident(entry),
         cmd=entry["cmd"],
         cwd=entry.get("cwd"),
         engine=engine,
         declared_version=str(entry["version"]),
+        timeout=float(timeout) if timeout is not None else None,
     )
 
 
@@ -121,8 +123,9 @@ def list_config_entries(config: Path | None = None) -> list[dict]:
 
 def _validate(entry: dict) -> dict:
     """Normalise and validate one entry, or raise ValueError. Returns a clean
-    dict with blank optionals dropped."""
-    clean = {k: str(v).strip() for k, v in entry.items() if str(v).strip()}
+    dict with blank optionals dropped; ``timeout`` is kept as a number."""
+    clean: dict = {k: str(v).strip() for k, v in entry.items()
+                   if k != "timeout" and str(v).strip()}
     for req in ("engine", "version", "cmd"):
         if not clean.get(req):
             raise ValueError(f"engine entry is missing required {req!r}")
@@ -130,6 +133,15 @@ def _validate(entry: dict) -> dict:
     if adapter not in REGISTRY:
         known = ", ".join(sorted(REGISTRY))
         raise ValueError(f"unknown adapter {adapter!r}; known adapters: {known}")
+    raw = entry.get("timeout")
+    if raw is not None and str(raw).strip():
+        try:
+            seconds = float(raw)
+        except (TypeError, ValueError):
+            raise ValueError(f"timeout must be a number of seconds, got {raw!r}")
+        if seconds <= 0:
+            raise ValueError("timeout must be a positive number of seconds")
+        clean["timeout"] = int(seconds) if seconds.is_integer() else seconds
     return clean
 
 
@@ -154,7 +166,7 @@ def _to_table(entry: dict):
 
     table = tomlkit.table()
     # Stable, readable key order; optionals only when present.
-    for key in ("engine", "version", "cmd", "cwd", "adapter"):
+    for key in ("engine", "version", "cmd", "cwd", "adapter", "timeout"):
         if key in entry:
             table[key] = entry[key]
     return table

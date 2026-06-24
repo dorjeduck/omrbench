@@ -73,50 +73,72 @@ function headline(summary) {
   return k ? { key: k, value: summary[k] } : null;
 }
 
-// ---- Verovio (lazy, from CDN) ---------------------------------------------
+// ---- OpenSheetMusicDisplay (from CDN) --------------------------------------
+// OSMD (loaded `defer` in index.html) renders MusicXML far more faithfully than
+// Verovio for engine output that omits display hints (accidentals/beaming) — it
+// fills them in like MuseScore. Unlike Verovio's single WASM toolkit, each call
+// gets its own instance, so renders are independent and need no serialization.
 
-function loadVerovio() {
-  if (window._verovioPromise) return window._verovioPromise;
-  window._verovioPromise = new Promise((resolve, reject) => {
+function osmdReady() {
+  if (window._osmdReady) return window._osmdReady;
+  window._osmdReady = new Promise((resolve, reject) => {
     let waited = 0;
     const check = () => {
-      if (window.verovio && verovio.module) {
-        if (verovio.module.calledRun) resolve(new verovio.toolkit());
-        else verovio.module.onRuntimeInitialized = () => resolve(new verovio.toolkit());
-      } else if ((waited += 50) > 15000) {
-        reject(new Error("Verovio failed to load"));
-      } else {
-        setTimeout(check, 50);
-      }
+      if (window.opensheetmusicdisplay) resolve();
+      else if ((waited += 50) > 15000) reject(new Error("OSMD failed to load"));
+      else setTimeout(check, 50);
     };
     check();
   });
-  return window._verovioPromise;
+  return window._osmdReady;
 }
 
-// The Verovio toolkit is a single, non-reentrant WASM instance: concurrent
-// loadData/renderToSVG calls corrupt its state. Serialize all renders.
-let renderQueue = Promise.resolve();
+// Notation zoom: page-engraving size is huge in these narrow panels, and the
+// right size is a matter of taste, so it's a live control rather than a constant.
+// Persisted, and applied to every notation currently on screen without re-fetch.
+let notationZoom = parseFloat(localStorage.getItem("notationZoom")) || 0.5;
+const liveNotation = []; // {container, osmd} on screen, for live re-zoom
 
-function renderNotation(container, xmlUrl) {
-  renderQueue = renderQueue.then(async () => {
-    try {
-      const r = await fetch(xmlUrl);
-      if (!r.ok) throw new Error("not available");
-      const xml = await r.text();
-      const tk = await loadVerovio();
-      tk.setOptions({ pageWidth: 2200, scale: 40, adjustPageHeight: true, header: "none", footer: "none" });
-      if (!tk.loadData(xml)) throw new Error("could not render this MusicXML");
-      container.innerHTML = tk.renderToSVG(1);
-    } catch (e) {
-      // A WASM trap (e.g. "memory access out of bounds" on malformed output)
-      // leaves the toolkit corrupt; drop it so the next render rebuilds it.
-      window._verovioPromise = null;
-      container.innerHTML = "";
-      container.append(el("p", { class: "err" }, `notation unavailable: ${e.message}`));
-    }
+function applyNotationZoom() {
+  for (let i = liveNotation.length - 1; i >= 0; i--) {
+    const { container, osmd } = liveNotation[i];
+    if (!container.isConnected) { liveNotation.splice(i, 1); continue; } // stale render
+    osmd.zoom = notationZoom;
+    try { osmd.render(); } catch (_) { /* ignore a transient layout error */ }
+  }
+}
+
+// A zoom slider for the notation panels; embed it above any view that renders.
+function zoomControl() {
+  const pct = el("span", { class: "muted" }, `${Math.round(notationZoom * 100)}%`);
+  const slider = el("input", { type: "range", min: "0.25", max: "1.5", step: "0.01", value: String(notationZoom) });
+  slider.addEventListener("input", () => {
+    notationZoom = parseFloat(slider.value);
+    localStorage.setItem("notationZoom", String(notationZoom));
+    pct.textContent = `${Math.round(notationZoom * 100)}%`;
+    applyNotationZoom();
   });
-  return renderQueue;
+  return el("div", { class: "filters" }, el("label", {}, "Notation zoom ", slider), pct);
+}
+
+async function renderNotation(container, xmlUrl) {
+  try {
+    const r = await fetch(xmlUrl);
+    if (!r.ok) throw new Error("not available");
+    const xml = await r.text();
+    await osmdReady();
+    container.innerHTML = "";
+    const osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(container, {
+      drawTitle: false, drawPartNames: false, autoResize: false,
+    });
+    await osmd.load(xml);
+    osmd.zoom = notationZoom;
+    osmd.render();
+    liveNotation.push({ container, osmd });
+  } catch (e) {
+    container.innerHTML = "";
+    container.append(el("p", { class: "err" }, `notation unavailable: ${e.message}`));
+  }
 }
 
 // ---- chart lifecycle -------------------------------------------------------
@@ -236,7 +258,9 @@ function runningRow(r, onChange) {
     onChange();
   });
 
-  poll();
+  // Defer the first poll one tick: the caller appends `row` after we return, so
+  // polling now would hit the `!row.isConnected` guard and never reschedule.
+  setTimeout(poll, 0);
   return row;
 }
 
@@ -496,22 +520,51 @@ async function viewRun(runId, wantMetric) {
       });
     }
 
-    // worst-N table
-    const worst = scored.slice().sort((a, b) => (b[primary] ?? 0) - (a[primary] ?? 0)).slice(0, 25);
-    const fieldKeys = worst.length ? Object.keys(worst[0]).filter((k) => k !== "id" && k !== "ok") : [];
-    const table = el("table", {},
-      el("thead", {}, el("tr", {}, el("th", {}, "Sample"),
-        ...fieldKeys.map((k) => el("th", { class: "num" }, k)))));
-    const tbody = el("tbody");
-    for (const s of worst) {
-      const tr = el("tr", { class: "clickable", onclick: () => (location.hash = `#/case/${runId}/${s.id}/${m}`) },
-        el("td", {}, s.id),
-        ...fieldKeys.map((k) => el("td", { class: "num" }, fmtVal(m, k, s[k]))));
-      tbody.append(tr);
+    // All samples, sortable by any column. Default: primary field descending
+    // (worst first), so this still opens on the worst cases; click a header to
+    // re-sort, click again to flip direction. Unscored samples (no prediction)
+    // are listed too and always sink to the bottom of a numeric sort.
+    const samples = rec.samples.slice();
+    const fieldKeys = (scored[0] ? Object.keys(scored[0]) : []).filter((k) => k !== "id" && k !== "ok");
+    let sortKey = primary && fieldKeys.includes(primary) ? primary : "id";
+    let sortDir = sortKey === "id" ? 1 : -1; // ids ascending, error fields worst-first
+
+    const head = el("thead");
+    const body = el("tbody");
+    const table = el("table", {}, head, body);
+
+    const cmp = (a, b) => {
+      if (sortKey === "id") return sortDir * String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
+      const av = a[sortKey], bv = b[sortKey], am = typeof av === "number", bm = typeof bv === "number";
+      if (!am && !bm) return 0;
+      if (!am) return 1;            // missing values always sink, regardless of dir
+      if (!bm) return -1;
+      return sortDir * (av - bv);
+    };
+
+    function setSort(key) {
+      if (key === sortKey) sortDir = -sortDir;
+      else { sortKey = key; sortDir = key === "id" ? 1 : -1; }
+      draw();
     }
-    table.append(tbody);
-    content.append(el("h2", {}, "Worst samples"),
-      el("p", { class: "muted" }, "Click a row to compare the prediction with the ground truth."),
+
+    function draw() {
+      head.innerHTML = "";
+      body.innerHTML = "";
+      const arrow = (k) => (k === sortKey ? (sortDir === 1 ? " ▲" : " ▼") : "");
+      const th = (label, key, cls) =>
+        el("th", { class: `sortable ${cls || ""}`, onclick: () => setSort(key) }, label + arrow(key));
+      head.append(el("tr", {}, th("Sample", "id"), ...fieldKeys.map((k) => th(k, k, "num"))));
+      samples.sort(cmp);
+      for (const s of samples) {
+        body.append(el("tr", { class: "clickable", onclick: () => (location.hash = `#/case/${runId}/${s.id}/${m}`) },
+          el("td", {}, s.id),
+          ...fieldKeys.map((k) => el("td", { class: "num" }, k in s ? fmtVal(m, k, s[k]) : "—"))));
+      }
+    }
+    draw();
+    content.append(el("h2", {}, `Samples (${samples.length})`),
+      el("p", { class: "muted" }, "Click a column to sort, a row to compare prediction with ground truth."),
       el("div", { class: "card" }, table));
   }
 }
@@ -576,6 +629,7 @@ async function viewCase(runId, sampleId, wantMetric) {
   const predBox = el("div", {}, el("p", { class: "muted" }, "rendering…"));
   predPanel.append(predBox);
 
+  app.append(zoomControl());
   app.append(el("div", { class: "case-panels" }, imgPanel, refPanel, predPanel));
 
   renderNotation(refBox, `/api/file/musicxml?${q}&side=reference`);
@@ -667,6 +721,7 @@ async function viewCompareCase(runA, runB, sampleId) {
   const aBox = el("div", {}, el("p", { class: "muted" }, "rendering…"));
   const bBox = el("div", {}, el("p", { class: "muted" }, "rendering…"));
 
+  app.append(zoomControl());
   app.append(el("div", { class: "case-panels compare-panels" },
     panel("Source image", img),
     panel("Ground truth", refBox),
@@ -717,6 +772,7 @@ async function viewEngines() {
   const cwdIn = el("input", { type: "text", placeholder: "e.g. /path/to/homr" });
   const adapterSel = el("select", {}, el("option", { value: "" }, "same as engine"));
   adapters.forEach((a) => adapterSel.append(el("option", { value: a }, a)));
+  const timeoutIn = el("input", { type: "number", min: "1", step: "1", placeholder: "e.g. 120" });
 
   const title = el("h2", {}, "Add Engine/Version");
   const save = el("button", { class: "action" }, "Add");
@@ -729,6 +785,7 @@ async function viewEngines() {
     cmdIn.value = entry?.cmd || "";
     cwdIn.value = entry?.cwd || "";
     adapterSel.value = entry?.adapter || "";
+    timeoutIn.value = entry?.timeout ?? "";
     title.textContent = entry ? `Edit ${entry.engine}@${entry.version}` : "Add Engine/Version";
     save.textContent = entry ? "Save" : "Add";
     resetBtn.style.display = entry ? "" : "none";
@@ -744,6 +801,7 @@ async function viewEngines() {
     fd.append("cmd", cmdIn.value.trim());
     fd.append("cwd", cwdIn.value.trim());
     fd.append("adapter", adapterSel.value);
+    fd.append("timeout", timeoutIn.value.trim());
     const url = engineEditing
       ? `/api/engine-config?engine=${encodeURIComponent(engineEditing.engine)}&version=${encodeURIComponent(engineEditing.version)}`
       : "/api/engine-config";
@@ -759,6 +817,7 @@ async function viewEngines() {
   formRow(form, "command", cmdIn);
   formRow(form, "working directory", cwdIn, "Where the command runs. Leave blank to use wherever omrbench was launched.");
   formRow(form, "adapter", adapterSel, "The driver code that talks to the engine. Defaults to the engine name.");
+  formRow(form, "timeout (seconds)", timeoutIn, "Per-image limit. A sample that runs longer is killed and counts as failed, so one stuck image can't freeze a run. Leave blank for no limit.");
   formActions(form, save, resetBtn);
   app.append(el("div", { class: "card" }, title, form));
 
@@ -769,7 +828,8 @@ async function viewEngines() {
   }
   const thead = el("thead", {}, el("tr", {},
     el("th", {}, "Engine"), el("th", {}, "Version"), el("th", {}, "Command"),
-    el("th", {}, "Directory"), el("th", {}, "Adapter"), el("th", {})));
+    el("th", {}, "Directory"), el("th", {}, "Adapter"),
+    el("th", { class: "num" }, "Timeout"), el("th", {})));
   const tbody = el("tbody");
   entries.forEach((e) => {
     const del = el("button", { class: "del", title: "delete this engine version",
@@ -786,6 +846,7 @@ async function viewEngines() {
       el("td", {}, e.cmd || "—"),
       el("td", {}, e.cwd || "—"),
       el("td", {}, e.adapter || el("span", { class: "muted" }, e.engine)),
+      el("td", { class: "num" }, e.timeout != null ? `${e.timeout}s` : "—"),
       el("td", { class: "num" }, del)));
   });
   app.append(el("div", { class: "card" }, el("table", {}, thead, tbody)));
@@ -1017,6 +1078,7 @@ async function viewCorpusSample(corpusId, sampleId) {
   }
   metaPanel.append(dl);
 
+  app.append(zoomControl());
   app.append(el("div", { class: "case-panels" }, imgPanel, refPanel, metaPanel));
   renderNotation(refBox, `/api/corpora/file/musicxml?${q}`);
 }
@@ -1027,6 +1089,7 @@ async function route() {
   const parts = (location.hash.replace(/^#\//, "") || "runs").split("/");
   document.querySelectorAll("nav a").forEach((a) =>
     a.classList.toggle("active", a.dataset.view === parts[0]));
+  liveNotation.length = 0; // previous view's notation is about to be discarded
   app.innerHTML = '<p class="muted">Loading…</p>';
   try {
     if (parts[0] === "metrics") await viewMetrics();

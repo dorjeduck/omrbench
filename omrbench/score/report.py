@@ -75,6 +75,18 @@ class Report:
             for s in self.samples
         ]
 
+    @classmethod
+    def from_record(cls, record: dict, metric: Metric, corpus: str) -> "Report":
+        """Rebuild a Report from a persisted score record (the inverse of
+        `to_score_record`), so a score computed elsewhere — e.g. in a child
+        process — can still be rendered. Aggregates recompute from the per-sample
+        fields, matching the stored summary."""
+        report = cls(metric=metric, corpus=corpus)
+        for s in record.get("samples", []):
+            fields = {k: v for k, v in s.items() if k not in ("id", "ok")}
+            report.samples.append(SampleResult(s["id"], ok=s["ok"], fields=fields))
+        return report
+
     def to_score_record(self) -> dict:
         """The cached score for one run+metric (`runs/<run-id>/scores/<metric>.json`).
         Carries only what is metric-specific — aggregates + every per-sample

@@ -30,8 +30,9 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree
 
-from omrbench.adapters.base import Adapter, capture_subprocess, run_subprocess
+from omrbench.adapters.base import Adapter
 from omrbench.corpus import Sample
+from omrbench.proc import capture_command, run_command
 
 
 def _parse_version(text: str | None) -> str | None:
@@ -82,8 +83,8 @@ class AudiverisAdapter(Adapter):
     def version(self) -> str | None:
         # Best-effort: recent builds print a `-version` block (we keep just the
         # number); older ones don't support the flag, in which case
-        # capture_subprocess returns None. Never imports the engine.
-        return _parse_version(capture_subprocess([*self.cmd, "-version"], cwd=self.cwd))
+        # capture_command returns None. Never imports the engine.
+        return _parse_version(capture_command([*self.cmd, "-version"], cwd=self.cwd))
 
     def predict(self, sample: Sample, out_path: Path) -> bool:
         image = sample.image
@@ -92,9 +93,9 @@ class AudiverisAdapter(Adapter):
         with tempfile.TemporaryDirectory(prefix="omrbench-audiveris-") as tmp:
             export_dir = Path(tmp) / "out"
             export_dir.mkdir()
-            ok = run_subprocess(
+            ok = run_command(
                 [*self.cmd, "-batch", "-export", "-output", str(export_dir), "--", str(image)],
-                cwd=self.cwd,
+                cwd=self.cwd, timeout=self.timeout,
             )
             if not ok:
                 return False

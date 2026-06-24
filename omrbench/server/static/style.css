@@ -57,6 +57,8 @@ th {
 }
 tr.clickable:hover { background: #f0f6ff; cursor: pointer; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover { color: var(--fg); }
 
 /* === Cards & layout grids === */
 .card {

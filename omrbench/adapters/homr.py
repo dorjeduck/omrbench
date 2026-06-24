@@ -26,8 +26,9 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from omrbench.adapters.base import Adapter, capture_subprocess, move_into, run_subprocess
+from omrbench.adapters.base import Adapter, move_into
 from omrbench.corpus import Sample
+from omrbench.proc import capture_command, run_command
 
 
 class HomrAdapter(Adapter):
@@ -36,7 +37,7 @@ class HomrAdapter(Adapter):
         # description is the precise identifier. None for a PATH/uvx install.
         if self.cwd is None:
             return None
-        return capture_subprocess(["git", "describe", "--tags", "--always"], cwd=self.cwd)
+        return capture_command(["git", "describe", "--tags", "--always"], cwd=self.cwd)
 
     def predict(self, sample: Sample, out_path: Path) -> bool:
         image = sample.image
@@ -46,7 +47,7 @@ class HomrAdapter(Adapter):
             tmp_dir = Path(tmp)
             work_image = tmp_dir / image.name
             shutil.copy(image, work_image)
-            ok = run_subprocess([*self.cmd, str(work_image)], cwd=self.cwd)
+            ok = run_command([*self.cmd, str(work_image)], cwd=self.cwd, timeout=self.timeout)
             produced = work_image.with_suffix(".musicxml")
             if not ok or not produced.exists() or produced.stat().st_size == 0:
                 return False

@@ -21,6 +21,19 @@ from omrbench.server.metrics_doc import DESCRIPTIONS
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+class _NoCacheStatic(StaticFiles):
+    """Serve the frontend with ``Cache-Control: no-cache`` so the browser always
+    revalidates against the ETag. This is a no-build-step local dev tool: editing
+    app.js/style.css must show up on a normal reload, not require a hard refresh.
+    ``no-cache`` still uses the cache (cheap 304s) — it just forbids serving stale
+    without checking."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="omrbench")
 
@@ -302,10 +315,12 @@ def create_app() -> FastAPI:
         cmd: str = Form(...),
         cwd: str = Form(""),
         adapter: str = Form(""),
+        timeout: str = Form(""),
     ) -> dict:
         from omrbench import engines
 
-        entry = {"engine": engine, "version": version, "cmd": cmd, "cwd": cwd, "adapter": adapter}
+        entry = {"engine": engine, "version": version, "cmd": cmd, "cwd": cwd,
+                 "adapter": adapter, "timeout": timeout}
         try:
             engines.add_config_entry(entry)
         except ValueError as exc:
@@ -323,10 +338,12 @@ def create_app() -> FastAPI:
         cmd: str = Form(...),
         cwd: str = Form(""),
         adapter: str = Form(""),
+        timeout: str = Form(""),
     ) -> dict:
         from omrbench import engines
 
-        entry = {"engine": new_engine, "version": new_version, "cmd": cmd, "cwd": cwd, "adapter": adapter}
+        entry = {"engine": new_engine, "version": new_version, "cmd": cmd, "cwd": cwd,
+                 "adapter": adapter, "timeout": timeout}
         try:
             engines.update_config_entry(engine, version, entry)
         except ValueError as exc:
@@ -347,7 +364,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=exc.args[0]) from exc
         return {"ok": True}
 
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    app.mount("/", _NoCacheStatic(directory=STATIC_DIR, html=True), name="static")
     return app
 
 

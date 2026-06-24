@@ -3,8 +3,8 @@
 The run counterpart of server/jobs.py: where jobs.py scores a run, this one
 *produces* it — an engine turns a corpus of images into predictions. A run
 shells out to an OMR engine and takes minutes, so the server launches it as a
-BackgroundProc (server/proc.py) the client polls; stopping kills the process
-group instantly, reaping the engine subprocess (see proc.py).
+proc.Job (omrbench/proc.py) the client polls; stopping kills the process group
+instantly, reaping the engine subprocess (see proc.py).
 
 The benchmark core never imports an engine: the worker goes through
 engines.load_engine -> adapter -> subprocess, exactly as the CLI's `run` does.
@@ -17,7 +17,7 @@ since run_corpus skips non-empty files) and run.json is rewritten to status
 Like jobs.py this is an in-memory registry for the life of the (single-process,
 local) server; a finished run is durable on disk under runs/<run-id>/. The two
 modules deliberately stay parallel rather than sharing a base (see CLAUDE.md /
-the run-vs-score lifecycle differences): the shared piece is BackgroundProc.
+the run-vs-score lifecycle differences): the shared piece is proc.Job.
 """
 
 from __future__ import annotations
@@ -30,10 +30,10 @@ from omrbench import runs as runs_mod
 from omrbench import scoring
 from omrbench.corpus import discover
 from omrbench.engines import load_engine
+from omrbench.proc import Job, Progress
 from omrbench.score import get_metric
-from omrbench.server.proc import BackgroundProc, Report
 
-# run_id -> {status, done, total, error, proc}. proc is the BackgroundProc;
+# run_id -> {status, done, total, error, proc}. proc is the proc.Job;
 # _public() strips it for the API.
 _jobs: dict[str, dict] = {}
 _lock = threading.Lock()
@@ -69,7 +69,7 @@ def start(engine: str, version: str, corpus: str) -> dict:
         "date": when.isoformat(),
         "status": "running",
     })
-    proc = BackgroundProc(_worker, args=(engine, version, str(corpus), run_id))
+    proc = Job(_worker, args=(engine, version, str(corpus), run_id))
     proc.start()
     with _lock:
         _jobs[run_id] = {"status": "running", "done": 0, "total": len(samples),
@@ -135,7 +135,7 @@ def _apply(job: dict) -> None:
             job["status"], job["error"] = "error", msg[1]
 
 
-def _worker(report: Report, engine: str, version: str, corpus: str, run_id: str) -> None:
+def _worker(report: Progress, engine: str, version: str, corpus: str, run_id: str) -> None:
     # Re-resolve the adapter in the child (engine-free, and avoids pickling it).
     adapter = load_engine(engine, version or None)
     samples = discover(Path(corpus))

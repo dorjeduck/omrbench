@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import shlex
 import shutil
-import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Callable
@@ -33,12 +32,16 @@ class Adapter(ABC):
         cwd: str | Path | None = None,
         engine: str | None = None,
         declared_version: str | None = None,
+        timeout: float | None = None,
     ) -> None:
         self.name = name
         self.engine = engine or name
         self.declared_version = declared_version
         self.cmd = shlex.split(cmd) if isinstance(cmd, str) else list(cmd)
         self.cwd = Path(cwd) if cwd else None
+        #: per-sample wall-clock budget in seconds (None = no limit); a run that
+        #: exceeds it fails that one sample instead of freezing the whole run.
+        self.timeout = timeout
 
     @abstractmethod
     def predict(self, sample: Sample, out_path: Path) -> bool:
@@ -77,24 +80,6 @@ class Adapter(ABC):
             if on_progress is not None:
                 on_progress(done, total)
         return results
-
-
-def run_subprocess(cmd: list[str], cwd: Path | None = None) -> bool:
-    """Run ``cmd``, returning True on exit code 0. Stdout/stderr pass through."""
-    proc = subprocess.run(cmd, cwd=cwd)  # noqa: S603 - cmd is caller-controlled
-    return proc.returncode == 0
-
-
-def capture_subprocess(cmd: list[str], cwd: Path | None = None) -> str | None:
-    """Run ``cmd`` and return its trimmed stdout, or None on failure. Used for
-    cheap metadata probes (e.g. a version string); never raises."""
-    try:
-        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)  # noqa: S603
-    except OSError:
-        return None
-    if proc.returncode != 0:
-        return None
-    return proc.stdout.strip() or None
 
 
 def move_into(src: Path, dest: Path) -> None:

@@ -94,8 +94,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 
 def _cmd_score(args: argparse.Namespace) -> int:
-    from omrbench import runs, scoring
+    from omrbench import proc, runs, scoring
     from omrbench.score import get_metric
+    from omrbench.score.report import Report
 
     metric = get_metric(args.metric)
     if args.run:
@@ -110,21 +111,36 @@ def _cmd_score(args: argparse.Namespace) -> int:
             print("no runs found under runs/", file=sys.stderr)
             return 2
 
+    # Same wall-clock budget the server uses, so a hang can't burn unbounded time
+    # here either; scoring runs in a killable child so the budget can be enforced.
+    timeout = scoring.configured_timeout()
+
     def progress(run_id: str, done: int, total: int) -> None:
         end = "\n" if done == total else ""
         print(f"\rscoring {run_id} {done}/{total}", end=end, file=sys.stderr, flush=True)
 
+    rc = 0
     for run in targets:
         # Zero-arg precompute skips runs already scored for this metric; an
         # explicit run id always re-scores.
         if not args.run and run.score_path(metric.name).exists():
             continue
-        report = scoring.score_run(run, metric, on_progress=lambda d, t, rid=run.run_id: progress(rid, d, t))
-        scoring.write_score(run, report)
+        try:
+            record = proc.run_blocking(
+                scoring.score_to_cache, (run.run_id, args.metric), timeout=timeout,
+                on_progress=lambda d, t, rid=run.run_id: progress(rid, d, t))
+        except TimeoutError as exc:
+            print(f"\n{run.run_id}: scoring {exc}", file=sys.stderr)
+            rc = 1
+            continue
+        except RuntimeError as exc:
+            print(f"\n{run.run_id}: scoring failed: {exc}", file=sys.stderr)
+            rc = 1
+            continue
         if args.run:
-            print(report.render())
+            print(Report.from_record(record, metric, run.corpus).render())
         print(f"{run.run_id}: {metric.name} -> {run.score_path(metric.name)}")
-    return 0
+    return rc
 
 
 def _cmd_rm(args: argparse.Namespace) -> int:

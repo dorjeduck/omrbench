@@ -24,6 +24,9 @@ corpus.py    sample discovery (id/ -> image + reference.musicxml + meta.yaml)
 runs.py      the run as the on-disk unit: runs/<run-id>/ (run.json, predictions/, scores/)
 adapters/    "images -> MusicXML" subprocess wrappers, one file per engine
 score/       MusicXML-vs-MusicXML metric; imports no engine
+proc.py      run work under a wall-clock budget, killably (engine-free): the
+             command runner adapters shell out through + the killable Job the
+             server/CLI run Python workers in. One tree-kill, one place.
 records.py   engine-free read layer over runs/ (used by the server)
 cli.py       omrbench fetch | run | score | augment | serve
 ```
@@ -101,6 +104,37 @@ sharing `engine` → one lineage.
 
 `run` caches: a non-empty prediction file is not re-run; delete it to force a
 re-run.
+
+## Timeouts (wall-clock budgets)
+
+Both budgets are opt-in (omit ⇒ no limit) and enforced by the one toolkit in
+`proc.py` (process-group tree-kill): nothing reaches for `subprocess.run(timeout=)`
+or its own watchdog. They differ in *granularity* because the work differs:
+
+- **Engine runs — per-sample.** An `[[engines]]` entry may set `timeout`
+  (seconds). A sample whose engine runs longer has its whole process tree killed
+  (via `proc.run_command`) and counts as *failed*, so one stuck image (e.g.
+  homr's CoreML stalling on an odd input size) can't freeze a run. Per-sample is
+  natural here because each sample is a fresh shelled-out command.
+
+- **Scoring — whole-job.** A separate `[scoring]` table sets `timeout` (seconds).
+  Scoring is engine-free *in-process* Python (no shelled-out command), and an
+  in-process C call (a music21 parse) can't be interrupted per-sample — the only
+  reliable stop is killing the worker process. So scoring runs in a killable
+  child (`proc.Job`) with a whole-job cap, applied the **same** way to the server
+  (`omrbench serve`) and the CLI (`omrbench score`) — both go through
+  `proc.run_blocking` / `proc.Job`.
+
+```toml
+[[engines]]
+engine  = "homr"
+version = "0.6.2"
+cmd     = "poetry run homr"
+timeout = 180          # kill any one image that runs longer than 3 min
+
+[scoring]
+timeout = 600          # kill a scoring job that runs longer than 10 min
+```
 
 ## Testing the homr adapter against the local checkout
 

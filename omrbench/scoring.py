@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import tomllib
 from pathlib import Path
 from typing import Callable
 
@@ -66,6 +67,26 @@ def write_score(run: Run, report: Report) -> dict:
     return record
 
 
+def configured_timeout(config: Path | None = None) -> float | None:
+    """Wall-clock budget (seconds) for one scoring job, from the ``[scoring]``
+    table of ``omrbench.toml`` (``timeout``), or None for no limit. Opt-in: a
+    metered/paid machine can cap a scoring run that would otherwise hang on a
+    pathological sample. Raises ValueError on a non-positive/non-numeric value."""
+    path = config or Path("omrbench.toml")
+    if not path.exists():
+        return None
+    raw = tomllib.loads(path.read_text()).get("scoring", {}).get("timeout")
+    if raw is None:
+        return None
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"[scoring] timeout must be a number of seconds, got {raw!r}")
+    if seconds <= 0:
+        raise ValueError("[scoring] timeout must be a positive number of seconds")
+    return seconds
+
+
 def ensure_score(run: Run, metric: Metric) -> dict:
     """The run's cached score for `metric`, computing and caching it on first
     request. This is the server's on-demand path."""
@@ -73,3 +94,16 @@ def ensure_score(run: Run, metric: Metric) -> dict:
     if path.is_file():
         return json.loads(path.read_text())
     return write_score(run, score_run(run, metric))
+
+
+def score_to_cache(progress, run_id: str, metric_name: str) -> dict:
+    """Score one run+metric, persist the cache, and return the record. A
+    module-level worker (so it can be the target of a ``proc.Job`` child),
+    shared by the CLI and the server scoring job — one scoring worker, bounded by
+    the same budget wherever it runs. ``progress(done, total)`` streams progress."""
+    from omrbench import runs as runs_mod
+    from omrbench.score import get_metric
+
+    run = runs_mod.load_run(run_id)
+    metric = get_metric(metric_name)
+    return write_score(run, score_run(run, metric, on_progress=progress))

@@ -60,3 +60,39 @@ def test_score_run_honours_subset_selection(tmp_path):
     run = _make_run(tmp_path, sample_ids=("0000", "0001"), meta_extra={"samples": ["0000"]})
     report = scoring.score_run(run, Music21Metric())
     assert [s.sample_id for s in report.samples] == ["0000"]
+
+
+def test_configured_timeout_reads_scoring_table(tmp_path):
+    cfg = tmp_path / "omrbench.toml"
+    cfg.write_text("[scoring]\ntimeout = 600\n")
+    assert scoring.configured_timeout(cfg) == 600.0
+
+
+def test_configured_timeout_absent_is_none(tmp_path):
+    cfg = tmp_path / "omrbench.toml"
+    cfg.write_text('[[engines]]\nengine = "homr"\nversion = "1"\ncmd = "homr"\n')
+    assert scoring.configured_timeout(cfg) is None
+    assert scoring.configured_timeout(tmp_path / "missing.toml") is None
+
+
+def test_configured_timeout_rejects_non_positive(tmp_path):
+    import pytest
+
+    cfg = tmp_path / "omrbench.toml"
+    cfg.write_text("[scoring]\ntimeout = 0\n")
+    with pytest.raises(ValueError, match="positive number"):
+        scoring.configured_timeout(cfg)
+
+
+def test_report_from_record_roundtrips(tmp_path):
+    # A score computed elsewhere (e.g. a child process) is rebuilt from its
+    # record so the CLI can render it — same render as the original report.
+    from omrbench.score.report import Report
+
+    run = _make_run(tmp_path, sample_ids=("0000", "0001"))
+    metric = Music21Metric()
+    original = scoring.score_run(run, metric)
+    record = original.to_score_record()
+    rebuilt = Report.from_record(record, metric, run.corpus)
+    assert rebuilt.render() == original.render()
+    assert rebuilt.to_score_record() == record

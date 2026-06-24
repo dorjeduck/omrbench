@@ -106,6 +106,37 @@ def test_add_drops_blank_optionals(tmp_path):
     assert "adapter" not in list_config_entries(cfg)[0]
 
 
+def test_no_timeout_by_default(tmp_path):
+    cfg = _toml(tmp_path, '[[engines]]\nengine = "homr"\nversion = "0.7"\ncmd = "homr"\n')
+    assert load_engine("homr", config=cfg).timeout is None
+
+
+def test_timeout_roundtrips_as_number(tmp_path):
+    cfg = _toml(tmp_path, "")
+    add_config_entry({"engine": "homr", "version": "0.7", "cmd": "homr", "timeout": "120"}, config=cfg)
+    # Stored as a TOML number, not a string, and surfaced on the adapter.
+    assert list_config_entries(cfg)[0]["timeout"] == 120
+    assert load_engine("homr", "0.7", config=cfg).timeout == 120.0
+
+
+def test_blank_timeout_dropped(tmp_path):
+    cfg = _toml(tmp_path, "")
+    add_config_entry({"engine": "homr", "version": "0.7", "cmd": "homr", "timeout": ""}, config=cfg)
+    assert "timeout" not in list_config_entries(cfg)[0]
+
+
+def test_non_positive_timeout_raises(tmp_path):
+    cfg = _toml(tmp_path, "")
+    with pytest.raises(ValueError, match="positive number"):
+        add_config_entry({"engine": "homr", "version": "0.7", "cmd": "homr", "timeout": "0"}, config=cfg)
+
+
+def test_non_numeric_timeout_raises(tmp_path):
+    cfg = _toml(tmp_path, "")
+    with pytest.raises(ValueError, match="must be a number"):
+        add_config_entry({"engine": "homr", "version": "0.7", "cmd": "homr", "timeout": "soon"}, config=cfg)
+
+
 def test_add_duplicate_raises(tmp_path):
     cfg = _toml(tmp_path, TWO_HOMR)
     with pytest.raises(KeyError, match="already exists"):
