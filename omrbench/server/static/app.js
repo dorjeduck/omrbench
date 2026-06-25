@@ -1009,17 +1009,18 @@ async function viewCorpus(corpusId) {
 // you're viewing that sample (case view, corpus, or sample view) — curation is
 // push, not pull.
 function addSampleCard(corpusId, reload) {
-  const card = el("div", { class: "card" }, el("h2", {}, "Add a sample"));
+  const card = el("div", { class: "card" },
+    el("h2", {}, "Add a sample"),
+    el("p", { class: "muted" }, "Upload an authored sample"));
 
-  // Upload
   const imageIn = el("input", { type: "file", accept: "image/png,image/jpeg" });
   const refIn = el("input", { type: "file", accept: ".musicxml,.xml" });
-  const refText = el("textarea", { rows: "3", placeholder: "…or paste reference MusicXML", style: "width:100%" });
+  const refText = el("textarea", { rows: "3", placeholder: "…or paste reference MusicXML here" });
   refIn.addEventListener("change", async () => { if (refIn.files[0]) refText.value = await refIn.files[0].text(); });
-  const sourceIn = el("input", { type: "text", placeholder: "source", size: "16" });
-  const typeIn = el("input", { type: "text", placeholder: "type (e.g. real_scan)", size: "16" });
-  const licenseIn = el("input", { type: "text", placeholder: "license", size: "24" });
-  const kindIn = el("input", { type: "text", placeholder: "kind (optional, e.g. real)", size: "16" });
+  const sourceIn = el("input", { type: "text" });
+  const typeIn = el("input", { type: "text", placeholder: "real_scan" });
+  const licenseIn = el("input", { type: "text" });
+  const kindIn = el("input", { type: "text", placeholder: "real" });
   const upload = el("button", {
     class: "action",
     onclick: async () => {
@@ -1039,11 +1040,19 @@ function addSampleCard(corpusId, reload) {
       reload();
     },
   }, "Upload");
-  card.append(
-    el("p", { class: "muted" }, "Upload an authored sample"),
-    el("div", { class: "filters" }, el("label", {}, "image ", imageIn), el("label", {}, "reference ", refIn)),
-    refText,
-    el("div", { class: "filters" }, el("label", {}, sourceIn), el("label", {}, typeIn), el("label", {}, licenseIn), el("label", {}, kindIn), upload));
+
+  // A multi-field form -> the .form grid (CLAUDE.md: never a stack of .filters
+  // rows with size= guesses). One left edge, one width, all from CSS.
+  const form = formGrid();
+  formRow(form, "image", imageIn);
+  formRow(form, "reference file", refIn, "Pick a .musicxml/.xml file, or paste below.");
+  formRow(form, "reference MusicXML", refText);
+  formRow(form, "source", sourceIn);
+  formRow(form, "type", typeIn);
+  formRow(form, "license", licenseIn);
+  formRow(form, "kind", kindIn, "Optional informational tag.");
+  formActions(form, upload);
+  card.append(form);
   return card;
 }
 

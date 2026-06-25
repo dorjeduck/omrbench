@@ -1,7 +1,9 @@
 # Design: the **run** as the first-class unit
 
-Status: proposal (not yet implemented). Reorients prediction storage, scoring,
-and the reporting UI around "a run" instead of "an engine".
+Status: implemented. This document is the design rationale for the current
+layout, which reorients prediction storage, scoring, and the reporting UI around
+"a run" instead of "an engine". The "Problem" and "Migration" sections below
+describe the pre-run layout this replaced, kept for context.
 
 ## Problem
 
@@ -175,7 +177,8 @@ on the pre-per-part-tokenizer basis, i.e. already stale). So:
   `git mv` / `git rm` does it. Migration tooling for a single dataset is
   speculative — document the new layout, anyone else re-runs.
 
-The actual move happens when the layout is implemented, not before.
+(This migration has been done; `runs/` is the live layout and `predictions/` /
+`results/` are gone.)
 
 ## What this resolves
 

@@ -188,7 +188,7 @@ tr.broken td { background: #fff6f5; }
 }
 .form > label { color: var(--muted); font-size: 0.9rem; text-align: right; }
 .form > .control { display: grid; gap: 0.3rem; }
-.form input, .form select { width: 100%; }
+.form input, .form select, .form textarea { width: 100%; }
 .form .hint { color: var(--muted); font-size: 0.8rem; }
 .form .actions { display: flex; gap: 0.6rem; grid-column: 1 / -1; justify-content: flex-end; }
 

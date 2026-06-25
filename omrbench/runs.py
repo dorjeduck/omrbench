@@ -2,9 +2,9 @@
 
 A run lives at ``runs/<run-id>/`` and is self-contained: what was run
 (``run.json``), the engine output (``predictions/<id>.musicxml``), and any cached
-scores (``scores/<metric>.json``). The run-id is ``<engine>-<timestamp>``; engine
-and corpus are recorded in ``run.json``, so nothing downstream has to re-state
-them. This module imports no OMR engine.
+scores (``scores/<metric>.json``). The run-id is ``<engine>-<version>-<timestamp>``;
+engine and corpus are recorded in ``run.json``, so nothing downstream has to
+re-state them. This module imports no OMR engine.
 
 See DESIGN.md for the rationale (the run replaces the old per-engine
 ``predictions/`` and ``results/`` layout).

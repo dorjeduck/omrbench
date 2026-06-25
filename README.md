@@ -10,8 +10,10 @@ shared ground-truth corpus. The benchmark core imports **no** OMR engine —
 engines plug in through thin subprocess adapters — so you can install and run
 the corpus + scorer with zero OMR tools present, and add one engine at a time.
 
-> Status: early skeleton. The homr adapter and the music21 metric run
-> end-to-end; the corpus is seeded and expanded over time.
+> Status: early skeleton, but end-to-end. Two adapters ship (homr, Audiveris)
+> and two metrics (music21 SER, opt-in omr-ned); a local web UI drives runs,
+> scoring, engine config, and corpus management. The corpus is seeded and
+> expanded over time.
 
 ## Why
 
@@ -66,10 +68,10 @@ omrbench fetch grandstaff --limit 200      # synthetic -> corpora/grandstaff/
 
 # 2. run an engine declared in omrbench.toml (see "Engines" below) -> a new run
 omrbench run --engine homr --corpus corpora/polish_scores
-#   prints the run id, e.g.  homr-20260614T210837Z
+#   prints the run id, e.g.  homr-0.6.1-20260614T210837Z
 
 # 3. score that run (engine + corpus come from the run; no need to restate them)
-omrbench score homr-20260614T210837Z
+omrbench score homr-0.6.1-20260614T210837Z
 ```
 
 To probe robustness, write a degraded copy of a synthetic corpus and run against
@@ -87,9 +89,10 @@ recorded in each sample's `meta.yaml`. It degrades, it does not upscale — it w
 not make a low-DPI corpus easier for a resolution-sensitive engine.
 
 A *run* is the unit: `run` writes everything under `runs/<run-id>/` (run-id is
-`<engine>-<timestamp>`) — the predictions, a `run.json` recording the engine and
-corpus, and any cached `scores/<metric>.json`. So `score` only needs the run id;
-with no id it scores every run missing that metric's score. See **DESIGN.md**.
+`<engine>-<version>-<timestamp>`) — the predictions, a `run.json` recording the
+engine and corpus, and any cached `scores/<metric>.json`. So `score` only needs
+the run id; with no id it scores every run missing that metric's score. See
+**DESIGN.md**.
 
 ### Web UI
 
@@ -98,9 +101,13 @@ pip install -e '.[serve]'
 omrbench serve              # -> http://127.0.0.1:8000
 ```
 
-A lightweight, read-only local interface to browse runs and trends, inspect a
-case's prediction side by side with the ground truth (rendered in-browser), and
-read what each metric measures. See **[serve.md](serve.md)** for details.
+A lightweight local interface to browse runs, inspect a case's prediction side by
+side with the ground truth (rendered in-browser), and read what each metric
+measures. It can also drive the benchmark from the browser — launch and stop
+engine runs, score a run on demand, edit `omrbench.toml` engine entries, and
+manage corpora (create, upload/curate samples, delete). It stays engine-free: it
+shells out to engines exactly as the CLI does. See **[serve.md](serve.md)** for
+details.
 
 ### Engines
 

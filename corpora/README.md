@@ -7,7 +7,6 @@ corpora/<name>/
   <id>/
     image.{jpg,png}      # the OMR input
     reference.musicxml   # the ground truth (required for scoring)
-    reference.krn        # optional **kern (enables the omr-ned metric)
     meta.yaml            # provenance + license (+ optional kind, source, type)
 ```
 

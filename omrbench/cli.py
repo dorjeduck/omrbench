@@ -5,10 +5,11 @@
     omrbench score [RUN_ID] [--metric music21]         -> runs/<run-id>/scores/<metric>.json
     omrbench rm    RUN_ID [RUN_ID ...] [-f]            -> delete run(s)
 
-A *run* is the unit (see DESIGN.md): `run` produces `runs/<engine>-<timestamp>/`
-holding the predictions and a `run.json` that records the engine and corpus. So
-`score` only needs a run id — engine and corpus come from the run; with no id it
-scores every run missing that metric's score (precompute for CI / the web UI).
+A *run* is the unit (see DESIGN.md): `run` produces
+`runs/<engine>-<version>-<timestamp>/` holding the predictions and a `run.json`
+that records the engine and corpus. So `score` only needs a run id — engine and
+corpus come from the run; with no id it scores every run missing that metric's
+score (precompute for CI / the web UI).
 """
 
 from __future__ import annotations
@@ -50,6 +51,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(str(exc).strip("'\""), file=sys.stderr)
         return 2
     version = engine.resolved_version()
+    if not version:
+        # Mirrors the server's guard: the version is half a run's identity (it
+        # names the run dir), so a run can't proceed without one.
+        print(
+            f"cannot determine a version for engine {args.engine!r}; declare 'version' in omrbench.toml",
+            file=sys.stderr,
+        )
+        return 2
     samples = discover(Path(args.corpus))
     when = datetime.now(timezone.utc)
     run_dir = runs.create_run_dir(engine.engine, version, when)

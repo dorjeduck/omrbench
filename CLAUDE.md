@@ -23,15 +23,20 @@ engine, it is wrong.
 corpus.py    sample discovery (id/ -> image + reference.musicxml + meta.yaml)
 runs.py      the run as the on-disk unit: runs/<run-id>/ (run.json, predictions/, scores/)
 adapters/    "images -> MusicXML" subprocess wrappers, one file per engine
+engines.py   omrbench.toml read + edit; resolves engine+version -> an adapter
 score/       MusicXML-vs-MusicXML metric; imports no engine
+scoring.py   score a run's predictions against its corpus (engine-free); CLI + server share it
+augment.py   synthetic-corpus image degradation for robustness probing (engine-free)
 proc.py      run work under a wall-clock budget, killably (engine-free): the
              command runner adapters shell out through + the killable Job the
              server/CLI run Python workers in. One tree-kill, one place.
 records.py   engine-free read layer over runs/ (used by the server)
+server/      thin engine-free read/write HTTP layer + the static web UI
 cli.py       omrbench fetch | run | score | augment | serve
 ```
 
-A **run** is the unit (see `DESIGN.md`): `run` produces `runs/<engine>-<timestamp>/`
+A **run** is the unit (see `DESIGN.md`): `run` produces
+`runs/<engine>-<version>-<timestamp>/`
 with the predictions and a `run.json` recording engine + corpus; scoring is
 engine-free and cached under `runs/<run-id>/scores/<metric>.json`, so `score`
 needs only a run id. (`predictions/` and `results/` are the retired old layout.)
@@ -174,7 +179,7 @@ is, the contract is leaking and the change is suspect.
 
 The web UI is **vanilla JS, no framework, no build step**: one `app.js` of
 hash-routed `view*()` functions building DOM through the `el()` helper, one
-`style.css`, heavy libs (Verovio, Chart.js) from CDN only. The server
+`style.css`, heavy libs (OpenSheetMusicDisplay, Chart.js) from CDN only. The server
 (`server/app.py`) stays the thin engine-free read/write layer — routes are calls
 into `records`/`corpus`/`engines`, never benchmark logic. Keep it this way; do
 not introduce a framework, bundler, or npm step for a skeleton-stage tool.
