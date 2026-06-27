@@ -28,10 +28,13 @@ pip install -e '.[augment]' # corpus image degradation
 
 ## Use
 
+`run` needs an engine declared in `omrbench.toml` (see [Add your
+engine](#add-your-engine)).
+
 ```bash
 omrbench fetch polish-scores                       # -> corpora/polish_scores/
 omrbench run --engine homr --corpus corpora/polish_scores  # -> a run id
-omrbench score homr-0.6.1-20260614T210837Z         # engine + corpus from run.json
+omrbench score homr-0.7.0-20260614T210837Z         # engine + corpus from run.json
 ```
 
 Each `run` creates `runs/<engine>-<version>-<timestamp>/` with the predictions, a
