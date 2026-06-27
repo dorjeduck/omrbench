@@ -4,6 +4,9 @@ __pycache__/
 *.egg-info/
 .DS_Store
 
+# Internal design notes; not published.
+/DESIGN.md
+
 # Local engine config (machine-specific paths); ship omrbench.toml.example.
 /omrbench.toml
 

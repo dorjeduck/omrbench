@@ -1,122 +1,53 @@
 # omrbench
 
-> ⚠️ **Early alpha.** APIs, corpus layout, and metrics may change without
-> notice. Not yet ready for production use — expect rough edges.
+omrbench is a ground-truth benchmark for Optical Music Recognition (OMR). It
+scores any OMR engine — software that transcribes an image of a score into
+MusicXML — against a shared corpus of score images paired with ground-truth
+MusicXML.
 
-A **tool-independent ground-truth benchmark for Optical Music Recognition (OMR)**.
-
-Point it at any engine that emits MusicXML, get a comparable score against a
-shared ground-truth corpus. The benchmark core imports **no** OMR engine —
-engines plug in through thin subprocess adapters — so you can install and run
-the corpus + scorer with zero OMR tools present, and add one engine at a time.
-
-> Status: early skeleton, but end-to-end. Two adapters ship (homr, Audiveris)
-> and two metrics (music21 SER, opt-in omr-ned); a local web UI drives runs,
-> scoring, engine config, and corpus management. The corpus is seeded and
-> expanded over time.
-
-## Why
-
-omrbench keeps its three components — the dataset, the engines, and the
-scorer — independent, so each can run without the others. You can install the
-corpus and scorer with no OMR tool present, add engines one at a time behind
-subprocess adapters, and keep the scoring path free of any engine-specific or
-cross-format conversion. Each component can be run and tested independently:
-
-```
-corpora/  images + reference MusicXML (+ optional **kern)
-adapters/ "images -> MusicXML" subprocess wrappers, 1 per engine
-score/    MusicXML-vs-MusicXML, imports no engine
-```
-
-## Corpus kinds (an informational tag)
-
-Each sample can carry a `kind` (in its `meta.yaml`, or inferred from a
-`synthetic/`/`real/` folder in its path). It's purely for display and optional
-filtering — nothing is enforced, corpora may mix kinds, and you can collect
-across them freely. The two values worth knowing:
-
-- **synthetic**: engraved scores with encoded ground truth. Ground
-  truth is exact and free. Cheap to scale but optimistic vs real-world scans —
-  `omrbench augment` can degrade the images (blur/rotate/noise/JPEG) to probe how
-  far that optimism holds.
-- **real scans**: hand-verified transcriptions of real documents.
-  Predictive of actual quality, but limited in size. Seeded from
-  [`btrkeks/polish-scores`](https://huggingface.co/datasets/btrkeks/polish-scores)
-  (112 historical scans, dual MusicXML/**kern ground truth, **evaluation-only**).
-
-Just be aware when reading scores: averaging synthetic and real into one number
-masks the optimism in the synthetic part, so it's usually worth reading them
-separately.
+> **Experimental.** Early stage, but end-to-end. Ships today: two engine
+> adapters (homr, Audiveris), two metrics (music21 SER, opt-in omr-ned), a CLI,
+> and a local web UI. The corpus is small and growing. Corpus layout, metrics,
+> and APIs may still change.
 
 ## Install
 
 ```bash
+pip install -e '.[all]'     # everything below
+```
+
+Or install only the extras you need:
+
+```bash
 pip install -e .            # core: corpus + scorer + adapters
-pip install -e '.[fetch]'   # + dataset download (datasets, huggingface_hub)
-pip install -e '.[omr-ned]' # + the omr-ned metric (musicdiff)
-pip install -e '.[serve]'   # + local web UI (see serve.md)
-pip install -e '.[augment]' # + corpus image degradation (omrbench augment)
+pip install -e '.[fetch]'   # dataset download (datasets, huggingface_hub)
+pip install -e '.[omr-ned]' # the omr-ned metric (musicdiff)
+pip install -e '.[serve]'   # local web UI (see serve.md)
+pip install -e '.[augment]' # corpus image degradation
 ```
 
 ## Use
 
 ```bash
-# 1. get a corpus
-omrbench fetch polish-scores               # real -> corpora/polish_scores/
-omrbench fetch grandstaff --limit 200      # synthetic -> corpora/grandstaff/
-
-# 2. run an engine declared in omrbench.toml (see "Engines" below) -> a new run
-omrbench run --engine homr --corpus corpora/polish_scores
-#   prints the run id, e.g.  homr-0.6.1-20260614T210837Z
-
-# 3. score that run (engine + corpus come from the run; no need to restate them)
-omrbench score homr-0.6.1-20260614T210837Z
+omrbench fetch polish-scores                       # -> corpora/polish_scores/
+omrbench run --engine homr --corpus corpora/polish_scores  # -> a run id
+omrbench score homr-0.6.1-20260614T210837Z         # engine + corpus from run.json
 ```
 
-To probe robustness, write a degraded copy of a synthetic corpus and run against
-it (reported separately — it stays the same kind as its source):
+Each `run` creates `runs/<engine>-<version>-<timestamp>/` with the predictions, a
+`run.json` recording the engine and corpus, and — once scored —
+`scores/<metric>.json`. `score` takes that run id and reads them back; with no id
+it scores every run still missing the given metric.
 
-```bash
-omrbench augment --corpus corpora/grandstaff \
-                 --out    corpora/grandstaff_blur \
-                 --blur 1.2 --rotate 2 --noise 12 --jpeg 45 --seed 1
-```
+`run` caches: a sample with non-empty output is not re-run. Delete the output to
+force a re-run.
 
-Degradations are Pillow-only and reproducible (same `--seed` → byte-identical
-images); references are copied unchanged and the applied degradations are
-recorded in each sample's `meta.yaml`. It degrades, it does not upscale — it will
-not make a low-DPI corpus easier for a resolution-sensitive engine.
+## Add your engine
 
-A *run* is the unit: `run` writes everything under `runs/<run-id>/` (run-id is
-`<engine>-<version>-<timestamp>`) — the predictions, a `run.json` recording the
-engine and corpus, and any cached `scores/<metric>.json`. So `score` only needs
-the run id; with no id it scores every run missing that metric's score. See
-**DESIGN.md**.
-
-### Web UI
-
-```bash
-pip install -e '.[serve]'
-omrbench serve              # -> http://127.0.0.1:8000
-```
-
-A lightweight local interface to browse runs, inspect a case's prediction side by
-side with the ground truth (rendered in-browser), and read what each metric
-measures. It can also drive the benchmark from the browser — launch and stop
-engine runs, score a run on demand, edit `omrbench.toml` engine entries, and
-manage corpora (create, upload/curate samples, delete). It stays engine-free: it
-shells out to engines exactly as the CLI does. See **[serve.md](serve.md)** for
-details.
-
-### Engines
-
-`omrbench.toml` is a list of `[[engines]]` entries, each a concrete install.
-Copy `omrbench.toml.example` and edit. An entry is identified by **engine +
-version** (no hand-typed label): `engine` is the tool (the identity runs group
-on), `version` distinguishes installs; `adapter` (the driver code) defaults to
-`engine`. So benchmarking two homr versions is two entries sharing
-`engine = "homr"` with different `version`:
+An engine is declared in `omrbench.toml` as an `[[engines]]` entry, identified by
+`engine` + `version`. Copy `omrbench.toml.example`. Two versions of one tool are
+two entries sharing `engine`; `--version` is required only when an engine has
+more than one entry.
 
 ```toml
 [[engines]]
@@ -124,63 +55,91 @@ engine  = "homr"
 version = "0.7.0"
 cmd     = "homr"
 
-[[engines]]                   # same tool -> same lineage
+[[engines]]
 engine  = "homr"
 version = "0.6.0"
 cmd     = "poetry run homr"
 cwd     = "/path/to/homr-v0.6"
 ```
 
+If your engine is already on PATH and outputs MusicXML, the `homr` or `audiveris`
+adapter may run it as-is. Otherwise, add an adapter: implement
+`Adapter.predict(sample, out_path) -> bool` in `omrbench/adapters/<engine>.py`
+(shell out, do not import the engine) and register it in
+`omrbench/adapters/__init__.py`. See `adapters/homr.py` (writes `.musicxml`) or
+`adapters/audiveris.py` (exports `.mxl`, needs unpacking), and
+[tech_overview.md](tech_overview.md) for the adapter contract.
+
+## Corpus
+
+A corpus is a directory of samples — each a score image paired with its
+ground-truth MusicXML.
+
+omrbench has fetchers for two corpora so far:
+
+- **polish-scores** (real) — hand-verified scans of historical documents: 112
+  scans with dual MusicXML/`**kern` ground truth, evaluation-only. Predictive but
+  scarce. From
+  [`btrkeks/polish-scores`](https://huggingface.co/datasets/btrkeks/polish-scores).
+- **grandstaff** (synthetic) — a large set of MusicXML rendered to images, so the
+  ground truth is exact and cheap to scale, but scores run optimistic.
+  `omrbench fetch grandstaff --limit N --seed S` takes a reproducible subset. It
+  is training data for some engines (e.g. homr), so scores there are
+  in-distribution. Its images are small ~70 DPI excerpts; engines expecting
+  full-page ~300 DPI scans (e.g. Audiveris) may fail to transcribe them.
+
+### augment
+
+Synthetic images are clean; real scans carry blur, skew, noise, and compression
+artifacts. `augment` writes a copy of a corpus with the images degraded and the
+ground-truth MusicXML left untouched — a synthetic corpus made harder, closing
+some of the gap to real-scan conditions.
+
 ```bash
-omrbench run   --engine homr --version 0.6.0 --corpus corpora/polish_scores
-omrbench score <run-id>        # the run id that `run` printed
+omrbench augment --corpus corpora/grandstaff --out corpora/grandstaff_blur \
+                 --blur 1.2 --rotate 2 --noise 12 --jpeg 45 --seed 1
 ```
 
-`--version` is needed only when an engine has more than one entry.
-
-`grandstaff` is an engraved (synthetic) dataset of tens of thousands of
-kern/image pairs (large download, cached); `--limit`/`--seed` select a
-reproducible subset. Note it is the training data of some engines (e.g. homr),
-so scores there are in-distribution and optimistic — choosing a source suited to
-the engine under test is the user's call. Its images are small, low-resolution
-engraved excerpts (~70 DPI); engines that expect full-page ~300 DPI scans
-(e.g. Audiveris) may fail to transcribe them — a corpus/engine fit issue, not a
-recognition result.
-
-`run` caches: a sample with a non-empty output is not re-run. Delete the output
-file to force a re-run.
+Pillow-only and reproducible (same `--seed` -> identical images). References are
+copied unchanged; applied degradations are recorded in each `meta.yaml`. It
+degrades only — it will not upscale a low-DPI corpus.
 
 ## Metrics
 
-- **`music21`** (default): note/symbol-level normalized edit distance, computed
-  MusicXML-vs-MusicXML. No engine vocabulary, no `**kern` step. SER = edit
-  distance / reference length (0.0 = perfect).
-- **`omr-ned`** (optional, `.[omr-ned]` extra): **musicdiff's OMR-NED**, computed
-  by [musicdiff](https://github.com/gregchapman-dev/musicdiff) (Greg Chapman's
-  MusicDiff, MIT) directly on the parsed MusicXML — `(I + D) / (N1 + N2)`. It is
-  the implementation the [Sheet Music Benchmark paper](https://arxiv.org/abs/2506.10488)
-  builds on; the numbers are musicdiff's own, not guaranteed paper-identical.
-  musicdiff is heavy and slow, hence opt-in.
+- **`music21`** (default): note/symbol-level normalized edit distance,
+  MusicXML-vs-MusicXML. SER = edit distance / reference length (0.0 = perfect).
+  No `**kern` step.
+- **`omr-ned`** (opt-in, `.[omr-ned]`): musicdiff's OMR-NED — a normalized edit
+  distance between the two scores, computed by
+  [musicdiff](https://github.com/gregchapman-dev/musicdiff) on parsed MusicXML.
+  The implementation behind the
+  [Sheet Music Benchmark paper](https://arxiv.org/abs/2506.10488); numbers are
+  musicdiff's own, not guaranteed paper-identical. Compute-intensive, hence
+  opt-in.
 
-> **On the metrics.** SER is a normalized Levenshtein edit distance over a
-> reference symbol sequence — the same construction as Word/Character Error Rate
-> in speech recognition and OCR. The construction is standard; the name "Symbol
-> Error Rate" and the specific implementation (music21 token stream,
-> MusicXML-vs-MusicXML) are this project's own. `omr-ned` instead defers entirely
-> to musicdiff's published OMR-NED.
+SER is a normalized Levenshtein distance over a reference symbol sequence (same
+construction as WER/CER). The construction is standard; the name and the music21
+token stream are this project's own. Both metrics work on MusicXML directly.
 
-Both metrics work on MusicXML directly; neither uses a `**kern` step.
+Add a metric: a class satisfying `score/base.Metric`, registered as a zero-arg
+factory in `score/__init__.py`'s `REGISTRY`. See
+[tech_overview.md](tech_overview.md) for the metric contract.
 
-## Adding an engine
+## Web UI
 
-Two adapters ship: `homr` and `audiveris`. To add your own, implement
-`Adapter.predict(sample, out_path) -> bool` in `omrbench/adapters/<engine>.py`
-(shell out; do not import the engine) and register it in
-`omrbench/adapters/__init__.py`. See `adapters/homr.py` for an engine that emits
-`.musicxml` directly, or `adapters/audiveris.py` for one that exports compressed
-`.mxl` and needs unpacking.
+```bash
+pip install -e '.[serve]'
+omrbench serve              # -> http://127.0.0.1:8000
+```
+
+Browse runs, inspect a prediction beside its ground truth (rendered in-browser),
+launch/stop runs, score on demand, edit `omrbench.toml`, and manage corpora. It
+stays engine-free, shelling out exactly as the CLI does. See [serve.md](serve.md).
+
+The same operations are available on the command line, for scripted workflows —
+see [cli.md](cli.md).
 
 ## License
 
-Code: MIT. Corpus data carries its **own** licenses — see `corpora/README.md`
-and per-sample `meta.yaml`. polish-scores is **evaluation-only; do not train**.
+Code: MIT. Corpus data carries its own licenses — see [corpora/README.md](corpora/README.md) and
+per-sample `meta.yaml`. polish-scores is evaluation-only; do not train.

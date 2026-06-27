@@ -24,6 +24,8 @@ omr-ned = ["musicdiff>=5.2"]
 serve = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9", "tomlkit>=0.12"]
 # Only needed for `omrbench augment` (synthetic-corpus image degradation).
 augment = ["pillow>=10.0"]
+# Everything a user might want, in one shot (omits the test-only `dev` extra).
+all = ["omrbench[fetch,omr-ned,serve,augment]"]
 # Only needed to run the test suite (`pytest`). Augment tests need Pillow; the
 # engine-config tests round-trip omrbench.toml through tomlkit (the serve extra's
 # dep), so it must be present for `pip install -e '.[dev]'` to give a green run.
