@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import random
 
+import pytest
 import yaml
 from PIL import Image
 
@@ -106,6 +107,15 @@ def test_augment_corpus_writes_parallel_corpus(tmp_path):
         assert meta["augment_seed"] == 7
         # original meta fields preserved
         assert meta["type"] == "engraved"
+
+
+def test_augment_corpus_refuses_in_place(tmp_path):
+    # out == src would degrade the source images in place — refused up front.
+    src = _make_corpus(tmp_path / "src", ids=("0000",))
+    before = (src / "0000" / "image.png").read_bytes()
+    with pytest.raises(ValueError):
+        augment_corpus(src, src, degradations={"blur": 1.0}, seed=0)
+    assert (src / "0000" / "image.png").read_bytes() == before
 
 
 def test_augment_corpus_does_not_mutate_source(tmp_path):

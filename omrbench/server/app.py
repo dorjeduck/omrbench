@@ -270,6 +270,8 @@ def create_app() -> FastAPI:
             sample = corpus.copy_sample(Path(corpus_id), src)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"id": sample.id}
 
     @app.delete("/api/corpora/samples")

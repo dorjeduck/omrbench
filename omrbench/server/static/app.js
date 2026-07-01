@@ -299,17 +299,18 @@ async function viewRuns() {
   let fCorpus = keep(distinct("corpus"), runsFilter.corpus);
   let fMetric = keep(metrics, runsFilter.metric);
 
-  const filterSelect = (opts, value, onpick) => {
+  // `label` renders an option's display text; values stay raw (they key the filter).
+  const filterSelect = (opts, value, onpick, label = (o) => o) => {
     const s = el("select", { onchange: (e) => onpick(e.target.value) });
     s.append(el("option", { value: "all" }, "All"));
-    opts.forEach((o) => s.append(el("option", { value: o }, o)));
+    opts.forEach((o) => s.append(el("option", { value: o }, label(o))));
     s.value = value;
     return s;
   };
   const filters = el("div", { class: "filters" },
     el("span", { class: "muted" }, "Filter:"),
     el("label", {}, "engine ", filterSelect(distinct("engine"), fEngine, (v) => { fEngine = runsFilter.engine = v; draw(); })),
-    el("label", {}, "corpus ", filterSelect(distinct("corpus"), fCorpus, (v) => { fCorpus = runsFilter.corpus = v; draw(); })),
+    el("label", {}, "corpus ", filterSelect(distinct("corpus"), fCorpus, (v) => { fCorpus = runsFilter.corpus = v; draw(); }, corpusName)),
     el("label", {}, "metric ", filterSelect(metrics, fMetric, (v) => { fMetric = runsFilter.metric = v; draw(); })));
 
   const container = el("div", {});
@@ -414,7 +415,10 @@ async function viewRun(runId, wantMetric) {
 
       btn.addEventListener("click", async () => {
         running(); btn.textContent = "scoring…";
-        try { await fetch(`/api/runs/${runId}/scores/${m}/start`, { method: "POST" }); }
+        try {
+          const r = await fetch(`/api/runs/${runId}/scores/${m}/start`, { method: "POST" });
+          if (!r.ok) { idle(); alert(`could not start scoring ${m}: ${(await r.json().catch(() => ({}))).detail || r.statusText}`); return; }
+        }
         catch (e) { idle(); alert(`could not start scoring ${m}: ${e.message}`); return; }
         poll();
       });

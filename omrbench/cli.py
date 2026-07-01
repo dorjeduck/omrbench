@@ -4,6 +4,8 @@
     omrbench run   --engine ENGINE --corpus DIR        -> a new run under runs/
     omrbench score [RUN_ID] [--metric music21]         -> runs/<run-id>/scores/<metric>.json
     omrbench rm    RUN_ID [RUN_ID ...] [-f]            -> delete run(s)
+    omrbench augment --corpus DIR --out DIR ...        -> a degraded corpus copy
+    omrbench serve [--host H] [--port P]               -> the local web UI
 
 A *run* is the unit (see DESIGN.md): `run` produces
 `runs/<engine>-<version>-<timestamp>/` holding the predictions and a `run.json`
@@ -62,43 +64,31 @@ def _cmd_run(args: argparse.Namespace) -> int:
     samples = discover(Path(args.corpus))
     when = datetime.now(timezone.utc)
     run_dir = runs.create_run_dir(engine.engine, version, when)
-    # Record the tool identity and version (so runs group by engine and the version
-    # names/distinguishes them) for the engine-free read/score path.
-    base_meta = {
-        "engine": engine.engine,
-        "engine_version": version,
-        "command": " ".join(engine.cmd),
-        "corpus": str(args.corpus),
-        "date": when.isoformat(),
-    }
-    # Write run.json up front with status "running", so a run interrupted mid-way
-    # (Ctrl-C, crash) is a visible, flagged run rather than an invisible orphan
-    # (list_runs needs run.json). Completion overwrites it with the coverage.
-    runs.write_run_meta(run_dir, {**base_meta, "status": "running"})
-    results = engine.run_corpus(samples, run_dir / "predictions")
-    produced = sum(1 for v in results.values() if v)
-    failed = sorted(sid for sid, ok in results.items() if not ok)
-    runs.write_run_meta(
-        run_dir,
-        {
-            **base_meta,
-            "status": "complete",
-            "samples_attempted": len(results),
-            "samples_produced": produced,
-            "samples_failed": failed,
-        },
+    meta = runs.start_meta(
+        engine.engine, version, " ".join(engine.cmd), str(args.corpus), when
     )
-    print(f"{run_dir.name}: {produced}/{len(results)} samples produced -> {run_dir}")
+    runs.write_run_meta(run_dir, meta)
+    results = engine.run_corpus(samples, run_dir / "predictions")
+    final = runs.complete_meta(meta, results)
+    runs.write_run_meta(run_dir, final)
+    print(
+        f"{run_dir.name}: {final['samples_produced']}/{len(results)} samples produced -> {run_dir}"
+    )
 
-    # Auto-score the cheap default metric so the run shows a number immediately;
-    # the heavy omr-ned stays opt-in (score it explicitly).
+    # Auto-score the cheap default metric so the run shows a number immediately
+    # (the heavy omr-ned stays opt-in), under the same [scoring] budget `score`
+    # uses. A scoring failure is not fatal: the run itself is complete on disk.
     from omrbench import scoring
-    from omrbench.score import get_metric
 
-    run = runs.load_run(run_dir.name)
-    metric = get_metric("music21")
-    scoring.write_score(run, scoring.score_run(run, metric))
-    print(f"{run_dir.name}: scored {metric.name}")
+    try:
+        scoring.score_default(run_dir.name)
+        print(f"{run_dir.name}: scored {scoring.DEFAULT_METRIC}")
+    except (TimeoutError, RuntimeError) as exc:
+        print(
+            f"{run_dir.name}: auto-scoring failed ({exc}); "
+            f"score it with `omrbench score {run_dir.name}`",
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -107,7 +97,16 @@ def _cmd_score(args: argparse.Namespace) -> int:
     from omrbench.score import get_metric
     from omrbench.score.report import Report
 
-    metric = get_metric(args.metric)
+    try:
+        metric = get_metric(args.metric)
+    except KeyError as exc:
+        print(str(exc).strip("'\""), file=sys.stderr)
+        return 2
+    except ImportError as exc:
+        # An opt-in metric whose extra isn't installed; its factory's message
+        # already says which extra to install.
+        print(str(exc), file=sys.stderr)
+        return 2
     if args.run:
         try:
             targets = [runs.load_run(args.run)]
@@ -199,7 +198,11 @@ def _cmd_augment(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    n = augment_corpus(Path(args.corpus), Path(args.out), degradations=degradations, seed=args.seed)
+    try:
+        n = augment_corpus(Path(args.corpus), Path(args.out), degradations=degradations, seed=args.seed)
+    except (FileNotFoundError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     print(f"wrote {n} augmented samples to {args.out}")
     return 0
 

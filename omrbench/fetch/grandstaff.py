@@ -65,7 +65,7 @@ def fetch(dest: Path, limit: int = 200, seed: int = 0, source_dir: Path | None =
         if count >= limit:
             break
         try:
-            musicxml = converter.parse(str(krn), format="humdrum").write("musicxml")
+            musicxml = Path(converter.parse(str(krn), format="humdrum").write("musicxml"))
         except Exception as exc:  # noqa: BLE001 - skip unconvertible samples, keep going
             print(f"  skip {krn.name}: kern->musicxml failed ({exc})")
             continue
@@ -74,7 +74,8 @@ def fetch(dest: Path, limit: int = 200, seed: int = 0, source_dir: Path | None =
         sample_dir = dest / sample_id
         sample_dir.mkdir(exist_ok=True)
         (sample_dir / "image.jpg").write_bytes(krn.with_suffix(".jpg").read_bytes())
-        (sample_dir / "reference.musicxml").write_text(Path(musicxml).read_text())
+        (sample_dir / "reference.musicxml").write_text(musicxml.read_text())
+        musicxml.unlink()  # music21 wrote it to its scratch dir; don't accumulate copies
         (sample_dir / "meta.yaml").write_text(
             yaml.safe_dump(
                 {

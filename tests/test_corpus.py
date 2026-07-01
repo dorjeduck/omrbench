@@ -121,14 +121,15 @@ def test_next_sample_id_increments(tmp_path):
 
 def test_add_sample_writes_files_and_increments(tmp_path):
     s0 = add_sample(tmp_path, image_bytes=b"\x89PNG\r\n", image_suffix=".png",
-                    reference_xml=_MINIMAL_XML, meta={"source": "hand", "type": "engraved"})
+                    reference_xml=_MINIMAL_XML, meta={"source": "hand", "type": "engraved"},
+                    root=tmp_path)
     assert s0.id == "0000"
     assert (tmp_path / "0000" / "image.png").is_file()
     assert s0.reference_musicxml.read_text() == _MINIMAL_XML
     assert s0.meta == {"source": "hand", "type": "engraved"}
 
     s1 = add_sample(tmp_path, image_bytes=b"\xff\xd8", image_suffix=".jpg",
-                    reference_xml=_MINIMAL_XML, meta={})
+                    reference_xml=_MINIMAL_XML, meta={}, root=tmp_path)
     assert s1.id == "0001"
     assert (tmp_path / "0001" / "image.jpg").is_file()
 
@@ -136,14 +137,26 @@ def test_add_sample_writes_files_and_increments(tmp_path):
 def test_add_sample_rejects_unparseable_reference(tmp_path):
     with pytest.raises(ValueError):
         add_sample(tmp_path, image_bytes=b"x", image_suffix=".png",
-                   reference_xml="not musicxml at all", meta={})
+                   reference_xml="not musicxml at all", meta={}, root=tmp_path)
     assert not (tmp_path / "0000").exists()  # nothing written on rejection
 
 
 def test_add_sample_rejects_bad_image_suffix(tmp_path):
     with pytest.raises(ValueError):
         add_sample(tmp_path, image_bytes=b"x", image_suffix=".gif",
-                   reference_xml=_MINIMAL_XML, meta={}, validate=False)
+                   reference_xml=_MINIMAL_XML, meta={}, validate=False, root=tmp_path)
+
+
+def test_add_sample_guards_traversal(tmp_path):
+    # a corpus dir outside the corpora root is refused before anything is written
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    root = tmp_path / "corpora"
+    root.mkdir()
+    with pytest.raises(ValueError):
+        add_sample(outside, image_bytes=b"x", image_suffix=".png",
+                   reference_xml=_MINIMAL_XML, meta={}, validate=False, root=root)
+    assert not (outside / "0000").exists()
 
 
 def test_copy_sample_preserves_meta_verbatim(tmp_path):
@@ -155,7 +168,7 @@ def test_copy_sample_preserves_meta_verbatim(tmp_path):
 
     dst = tmp_path / "dst"
     dst.mkdir()
-    copied = copy_sample(dst, src)
+    copied = copy_sample(dst, src, root=tmp_path)
     assert copied.id == "0000"
     assert (dst / "0000" / "image.png").is_file()
     # The eval-only license rides along unchanged.
@@ -228,6 +241,20 @@ def test_copy_sample_stamps_kind_so_it_travels(tmp_path):
     src = Sample(id="0000", dir=src_corpus / "0000")
     # copied into a kind-less corpus, the inferred kind is recorded in meta
     dst = create_corpus("mixed", root=tmp_path)
-    copied = copy_sample(dst, src)
+    copied = copy_sample(dst, src, root=tmp_path)
     assert copied.meta["kind"] == "synthetic"
     assert copied.meta["source"] == "s"
+
+
+def test_copy_sample_guards_traversal(tmp_path):
+    src_corpus = tmp_path / "src"
+    src_corpus.mkdir()
+    _make_sample_dir(src_corpus, "0000")
+    src = Sample(id="0000", dir=src_corpus / "0000")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    root = tmp_path / "corpora"
+    root.mkdir()
+    with pytest.raises(ValueError):
+        copy_sample(outside, src, root=root)
+    assert not (outside / "0000").exists()

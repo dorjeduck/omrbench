@@ -31,7 +31,6 @@ from omrbench import scoring
 from omrbench.corpus import discover
 from omrbench.engines import load_engine
 from omrbench.proc import Job, Progress
-from omrbench.score import get_metric
 
 # run_id -> {status, done, total, error, proc}. proc is the proc.Job;
 # _public() strips it for the API.
@@ -59,16 +58,11 @@ def start(engine: str, version: str, corpus: str) -> dict:
     when = datetime.now(timezone.utc)
     run_dir = runs_mod.create_run_dir(adapter.engine, resolved_version, when)
     run_id = run_dir.name
-    # Write run.json up front with status "running" (mirrors the CLI): the run is
-    # a visible, flagged run immediately, and the run_id exists to key the job by.
-    runs_mod.write_run_meta(run_dir, {
-        "engine": adapter.engine,
-        "engine_version": resolved_version,
-        "command": " ".join(adapter.cmd),
-        "corpus": str(corpus),
-        "date": when.isoformat(),
-        "status": "running",
-    })
+    # Write run.json up front with status "running" (same helper as the CLI): the
+    # run is a visible, flagged run immediately, and the run_id keys the job.
+    runs_mod.write_run_meta(run_dir, runs_mod.start_meta(
+        adapter.engine, resolved_version, " ".join(adapter.cmd), str(corpus), when
+    ))
     proc = Job(_worker, args=(engine, version, str(corpus), run_id))
     proc.start()
     with _lock:
@@ -97,30 +91,35 @@ def cancel(run_id: str) -> dict:
     """Stop a running run immediately and keep it as a flagged partial: kill the
     process group, then rewrite run.json to status "cancelled" with the counts
     produced so far. The predictions already on disk stay (and are resumable)."""
-    run = runs_mod.load_run(run_id)
+    runs_mod.load_run(run_id)  # validate the run exists
     with _lock:
         job = _jobs.pop(run_id, None)
     if job:
         job["proc"].kill()
+    # Re-read run.json after the kill: the worker may have finished (writing
+    # status "complete") in the meantime — keep that rather than overwriting a
+    # completed run as a cancelled partial with stale counts.
+    run = runs_mod.load_run(run_id)
+    status = run.status if run.status == "complete" else "cancelled"
     produced = len(run.prediction_ids())
-    attempted = (job["total"] if job else None) or run.attempted or produced
-    runs_mod.write_run_meta(run.dir, {
-        **run.meta,
-        "status": "cancelled",
-        "samples_attempted": attempted,
-        "samples_produced": produced,
-    })
-    # Score the partial with the cheap default so it shows as a flagged partial
-    # in the runs list (the tables list only scored runs). Best-effort: a
-    # half-written prediction left by the kill must not make Stop fail.
-    if produced:
+    if status == "cancelled":
+        attempted = (job["total"] if job else None) or run.attempted or produced
+        runs_mod.write_run_meta(run.dir, {
+            **run.meta,
+            "status": "cancelled",
+            "samples_attempted": attempted,
+            "samples_produced": produced,
+        })
+    # Score with the cheap default so the run shows in the runs list (the tables
+    # list only scored runs) — under the [scoring] budget, and best-effort: a
+    # half-written prediction left by the kill must not make Stop fail. Also
+    # covers a run that completed but was killed before its own auto-score.
+    if produced and not run.score_path(scoring.DEFAULT_METRIC).exists():
         try:
-            run = runs_mod.load_run(run_id)
-            metric = get_metric("music21")
-            scoring.write_score(run, scoring.score_run(run, metric))
+            scoring.score_default(run_id)
         except Exception:
             pass
-    return {"status": "cancelled"}
+    return {"status": status}
 
 
 def _apply(job: dict) -> None:
@@ -141,18 +140,10 @@ def _worker(report: Progress, engine: str, version: str, corpus: str, run_id: st
     samples = discover(Path(corpus))
     run = runs_mod.load_run(run_id)
     results = adapter.run_corpus(samples, run.predictions_dir, on_progress=report)
-    produced = sum(1 for v in results.values() if v)
-    failed = sorted(sid for sid, ok in results.items() if not ok)
-    base = {k: v for k, v in run.meta.items() if k != "status"}
-    runs_mod.write_run_meta(run.dir, {
-        **base,
-        "status": "complete",
-        "samples_attempted": len(results),
-        "samples_produced": produced,
-        "samples_failed": failed,
-    })
+    runs_mod.write_run_meta(run.dir, runs_mod.complete_meta(run.meta, results))
     # Auto-score the cheap default metric so the run shows a number immediately
-    # (mirrors the CLI); heavy metrics stay opt-in via the scoring jobs.
-    run = runs_mod.load_run(run_id)
-    metric = get_metric("music21")
-    scoring.write_score(run, scoring.score_run(run, metric))
+    # (mirrors the CLI); heavy metrics stay opt-in via the scoring jobs. Scored
+    # in-process rather than via scoring.score_default: this worker is a daemonic
+    # Job child, which may not spawn the scoring child that helper uses — and it
+    # is already killable as a whole (Stop reaps it, scoring included).
+    scoring.score_to_cache(lambda done, total: None, run_id, scoring.DEFAULT_METRIC)

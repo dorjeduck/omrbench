@@ -8,11 +8,13 @@ import pytest
 
 from omrbench.runs import (
     Run,
+    complete_meta,
     create_run_dir,
     delete_run,
     list_runs,
     load_run,
     make_run_id,
+    start_meta,
     write_run_meta,
 )
 
@@ -41,6 +43,20 @@ def test_create_run_dir_collision_gets_suffix(tmp_path):
     assert first.name == "homr-0.6.1-20260619T083012Z"
     assert second.name == "homr-0.6.1-20260619T083012Z-b"
     assert third.name == "homr-0.6.1-20260619T083012Z-c"
+
+
+def test_start_and_complete_meta_lifecycle():
+    meta = start_meta("homr", "0.6.1", "poetry run homr", "corpora/c", WHEN)
+    assert meta["status"] == "running"
+    assert meta["engine"] == "homr"
+    assert meta["date"] == WHEN.isoformat()
+
+    final = complete_meta(meta, {"0000": True, "0001": False, "0002": True})
+    assert final["status"] == "complete"
+    assert final["samples_attempted"] == 3
+    assert final["samples_produced"] == 2
+    assert final["samples_failed"] == ["0001"]
+    assert final["engine"] == "homr"  # identity carried over unchanged
 
 
 def test_write_and_load_run_roundtrip(tmp_path):

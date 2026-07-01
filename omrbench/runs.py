@@ -121,6 +121,34 @@ def write_run_meta(run_dir: Path, meta: dict) -> None:
     (run_dir / "run.json").write_text(json.dumps(meta, indent=2))
 
 
+def start_meta(engine: str, version: str, command: str, corpus: str, when: datetime) -> dict:
+    """The run.json a run starts with: the tool identity and version (so runs
+    group by engine and the version names/distinguishes them) for the engine-free
+    read/score path, plus status "running" — so a run interrupted mid-way
+    (Ctrl-C, crash) is a visible, flagged run rather than an invisible orphan.
+    Shared by the CLI and the server so the two can't drift."""
+    return {
+        "engine": engine,
+        "engine_version": version,
+        "command": command,
+        "corpus": corpus,
+        "date": when.isoformat(),
+        "status": "running",
+    }
+
+
+def complete_meta(meta: dict, results: dict[str, bool]) -> dict:
+    """The completion rewrite of a run.json: the starting ``meta`` with status
+    "complete" and the coverage counts from the adapter's per-sample results."""
+    return {
+        **{k: v for k, v in meta.items() if k != "status"},
+        "status": "complete",
+        "samples_attempted": len(results),
+        "samples_produced": sum(1 for ok in results.values() if ok),
+        "samples_failed": sorted(sid for sid, ok in results.items() if not ok),
+    }
+
+
 def delete_run(run_id: str, runs_dir: Path = RUNS_DIR) -> None:
     """Delete a run directory and everything under it (predictions + scores).
 

@@ -55,6 +55,21 @@ def test_score_run_marks_missing_prediction_not_ok(tmp_path):
     assert summary["samples_scored"] == 1         # the missing one is excluded, not laundered
 
 
+def test_score_run_marks_missing_reference_not_ok(tmp_path):
+    # a broken sample without ground truth still counts in samples_total
+    run = _make_run(tmp_path, sample_ids=("0000", "0001"))
+    (tmp_path / "corpus" / "0001" / "reference.musicxml").unlink()
+
+    report = scoring.score_run(run, Music21Metric())
+    by = {s.sample_id: s for s in report.samples}
+    assert by["0000"].ok is True
+    assert by["0001"].ok is False                 # unscoreable, not silently dropped
+
+    summary = report.to_score_record()["summary"]
+    assert summary["samples_total"] == 2
+    assert summary["samples_scored"] == 1
+
+
 def test_score_run_honours_subset_selection(tmp_path):
     # corpus has two samples, but the run declares it only covered 0000
     run = _make_run(tmp_path, sample_ids=("0000", "0001"), meta_extra={"samples": ["0000"]})

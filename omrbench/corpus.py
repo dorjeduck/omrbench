@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 
 import yaml
@@ -52,8 +53,10 @@ class Sample:
     def reference_musicxml(self) -> Path:
         return self.dir / "reference.musicxml"
 
-    @property
+    @cached_property
     def meta(self) -> dict:
+        # Cached: readers (kind, corpus listings) hit this repeatedly per sample,
+        # and a Sample is built fresh per request, so staleness is not a concern.
         meta_path = self.dir / "meta.yaml"
         if not meta_path.exists():
             return {}
@@ -197,11 +200,12 @@ def add_sample(
     reference_xml: str,
     meta: dict,
     validate: bool = True,
+    root: Path = CORPORA_ROOT,
 ) -> Sample:
     """Author a new sample into ``corpus_dir`` from an uploaded image + ground
     truth. ``validate`` parses the MusicXML (music21) so an unparseable ground
     truth is rejected before it poisons scoring. Returns the created Sample."""
-    corpus_dir = Path(corpus_dir)
+    corpus_dir = _confine(Path(corpus_dir), Path(root))
     if not corpus_dir.is_dir():
         raise FileNotFoundError(f"corpus dir not found: {corpus_dir}")
     suffix = image_suffix.lower()
@@ -219,13 +223,13 @@ def add_sample(
     return Sample(id=sample_id, dir=sample_dir)
 
 
-def copy_sample(corpus_dir: Path, src: Sample) -> Sample:
+def copy_sample(corpus_dir: Path, src: Sample, root: Path = CORPORA_ROOT) -> Sample:
     """Curate: copy ``src`` (image + reference + meta) into ``corpus_dir`` under a
     fresh id. The meta is copied verbatim so its license/source ride along
     unchanged — eval-only stays eval-only. The source's kind is stamped into the
     copy's meta so the (informational) tag survives the move into any corpus,
     even one outside a kind folder."""
-    corpus_dir = Path(corpus_dir)
+    corpus_dir = _confine(Path(corpus_dir), Path(root))
     if not corpus_dir.is_dir():
         raise FileNotFoundError(f"corpus dir not found: {corpus_dir}")
     if not src.reference_musicxml.is_file():

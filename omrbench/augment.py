@@ -110,6 +110,9 @@ def augment_corpus(
     rotate/blur/noise/jpeg (None = skip)."""
     corpus_dir = Path(corpus_dir)
     out_dir = Path(out_dir)
+    if out_dir.resolve() == corpus_dir.resolve():
+        # Writing into the source would degrade its images in place — data loss.
+        raise ValueError(f"output corpus must differ from the source corpus: {corpus_dir}")
     out_dir.mkdir(parents=True, exist_ok=True)
     tokens = degradation_tokens(degradations)
 

@@ -19,6 +19,9 @@ from omrbench.runs import Run
 from omrbench.score.base import Metric, SampleResult
 from omrbench.score.report import Report
 
+#: the cheap metric every run is auto-scored with right after it completes
+DEFAULT_METRIC = "music21"
+
 
 def score_run(
     run: Run,
@@ -36,17 +39,17 @@ def score_run(
     report = Report(metric=metric, corpus=run.corpus)
     for done, sample in enumerate(samples, 1):
         reference = sample.reference_musicxml
-        if reference.exists():
-            prediction = run.prediction(sample.id)
-            if prediction.exists():
-                report.samples.append(metric.score(prediction, reference, sample.id))
-            else:
-                # The engine produced no prediction for this sample. That is not
-                # the same as a *wrong* prediction: scoring a missing file as
-                # 100%-wrong would let a broken/incomplete run masquerade as a
-                # real (bad) result. Mark it ok=False so it is excluded from
-                # samples_scored and the aggregates, keeping the gap visible.
-                report.samples.append(SampleResult(sample.id, ok=False, fields={}))
+        prediction = run.prediction(sample.id)
+        if reference.exists() and prediction.exists():
+            report.samples.append(metric.score(prediction, reference, sample.id))
+        else:
+            # A missing prediction (engine produced nothing) or a missing
+            # reference (broken sample) is not the same as a *wrong* prediction:
+            # scoring it as 100%-wrong would let a broken/incomplete run
+            # masquerade as a real (bad) result. Mark it ok=False so it is
+            # excluded from samples_scored and the aggregates but still counted
+            # in samples_total, keeping the gap visible.
+            report.samples.append(SampleResult(sample.id, ok=False, fields={}))
         if on_progress is not None:
             on_progress(done, total)
     return report
@@ -94,6 +97,19 @@ def ensure_score(run: Run, metric: Metric) -> dict:
     if path.is_file():
         return json.loads(path.read_text())
     return write_score(run, score_run(run, metric))
+
+
+def score_default(run_id: str) -> dict:
+    """Auto-score a run with the cheap default metric, in a killable child under
+    the configured ``[scoring]`` budget — the same enforcement `omrbench score`
+    and the server use, so the post-run auto-score can't hang unbounded either.
+    Raises TimeoutError/RuntimeError like :func:`proc.run_blocking`; callers
+    decide whether that failure is fatal (the run itself is already on disk)."""
+    from omrbench import proc
+
+    return proc.run_blocking(
+        score_to_cache, (run_id, DEFAULT_METRIC), timeout=configured_timeout()
+    )
 
 
 def score_to_cache(progress, run_id: str, metric_name: str) -> dict:
