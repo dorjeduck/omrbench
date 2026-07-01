@@ -172,6 +172,15 @@ def _confine(path: Path, root: Path) -> Path:
     return resolved
 
 
+def check_corpus_path(path: str | Path, root: Path = CORPORA_ROOT) -> Path:
+    """Validate that a (client-supplied) corpus path stays under the corpora
+    root, returning it *unresolved* so callers keep the relative form used as
+    the corpus id everywhere. Raises ValueError on escape — the read-side
+    counterpart of the write guards above."""
+    _confine(Path(path), Path(root))
+    return Path(path)
+
+
 def create_corpus(name: str, root: Path = CORPORA_ROOT) -> Path:
     """Create an empty corpus ``root/name``. ``name`` must be a safe single path
     segment (and not a reserved kind-folder name). Raises FileExistsError if it

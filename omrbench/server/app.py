@@ -195,6 +195,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/corpora/detail")
     def corpus_detail(corpus_id: str = Query(...)) -> dict:
+        _corpus_path(corpus_id)
         try:
             return records.corpus_detail(corpus_id)
         except FileNotFoundError as exc:
@@ -262,10 +263,10 @@ def create_app() -> FastAPI:
         from omrbench import corpus
         from omrbench.corpus import Sample
 
-        # Curation is free-form: any sample can be collected into any corpus
-        # (e.g. a "hardest cases" set spanning sources). kind is informational and
-        # rides along in the copied meta; nothing is blocked here.
-        src = Sample(id=from_sample_id, dir=Path(from_corpus) / from_sample_id)
+        # Curation is free-form *within the corpora tree*: any sample can be
+        # collected into any corpus (e.g. a "hardest cases" set spanning
+        # sources). kind is informational and rides along in the copied meta.
+        src = Sample(id=from_sample_id, dir=_corpus_path(from_corpus) / from_sample_id)
         try:
             sample = corpus.copy_sample(Path(corpus_id), src)
         except FileNotFoundError as exc:
@@ -288,10 +289,12 @@ def create_app() -> FastAPI:
 
     @app.get("/api/corpora/file/image")
     def corpus_image(corpus_id: str = Query(...), sample_id: str = Query(...)) -> FileResponse:
+        _corpus_path(corpus_id)
         return FileResponse(_safe(records.corpus_sample_paths(corpus_id, sample_id).image))
 
     @app.get("/api/corpora/file/musicxml")
     def corpus_musicxml(corpus_id: str = Query(...), sample_id: str = Query(...)) -> FileResponse:
+        _corpus_path(corpus_id)
         path = _safe(records.corpus_sample_paths(corpus_id, sample_id).reference)
         return FileResponse(path, media_type="application/xml")
 
@@ -371,6 +374,18 @@ def create_app() -> FastAPI:
 
 
 _SIDES = {"reference": "reference", "prediction": "prediction", "image": "image"}
+
+
+def _corpus_path(corpus_id: str) -> Path:
+    """A client-supplied corpus path, validated to stay under the corpora tree
+    (reads and writes alike) — the boundary check for every /api/corpora route
+    that takes one. Returns the path unresolved, keeping the relative corpus id."""
+    from omrbench import corpus
+
+    try:
+        return corpus.check_corpus_path(corpus_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _safe(path: Path | None) -> Path:

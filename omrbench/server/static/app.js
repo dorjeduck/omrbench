@@ -332,10 +332,14 @@ async function viewRuns() {
       el("th", {}, "Date"), el("th", {}, "Engine"), el("th", {}, "Version"),
       el("th", {}, "Corpus"), el("th", { class: "num" }, "score"), el("th", {})));
     const tbody = el("tbody");
+    // A finished run with no cached score yet (auto-score failed or timed out)
+    // still shows — in the default (first) table, with "—" — so it stays
+    // reachable; its run view offers the Score buttons.
+    const unscored = (r) => metric === metrics[0] && !(r.metrics || []).length && r.status !== "running";
     const rows = runs.filter((r) =>
       (fEngine === "all" || r.engine === fEngine)
       && (fCorpus === "all" || r.corpus === fCorpus)
-      && (r.metrics || []).includes(metric));
+      && ((r.metrics || []).includes(metric) || unscored(r)));
     if (!rows.length) {
       tbody.append(el("tr", {}, el("td", { colspan: "6", class: "muted" }, "no runs match")));
     }
@@ -579,15 +583,15 @@ async function viewCase(runId, sampleId, wantMetric) {
   app.innerHTML = "";
 
   // Show the metric we arrived with (the one selected in the run view), falling
-  // back to music21. Only ever a metric this run already has cached, so loading
-  // it can't kick off a fresh (possibly slow) score from a stale URL.
+  // back to music21. Only ever a metric this run already has cached — null when
+  // it has none — so loading it can't kick off a fresh score from a stale URL.
   const cached = meta.metrics || [];
   const metric = cached.includes(wantMetric) ? wantMetric
-    : cached.includes("music21") ? "music21" : cached[0] || "music21";
+    : cached.includes("music21") ? "music21" : cached[0] || null;
 
   app.append(el("div", { class: "breadcrumb" },
     el("a", { onclick: () => (location.hash = "#/runs") }, "Runs"),
-    el("a", { onclick: () => (location.hash = `#/runs/${runId}/${metric}`) }, `${runLabel(meta)}`),
+    el("a", { onclick: () => (location.hash = `#/runs/${runId}/${metric || ""}`) }, `${runLabel(meta)}`),
     ` sample ${sampleId}`));
 
   // The ground truth here lives in the run's corpus; offer to copy it elsewhere.
@@ -597,9 +601,11 @@ async function viewCase(runId, sampleId, wantMetric) {
 
   // per-sample numbers, from the run's score for the selected metric
   let rec = null;
-  try {
-    rec = await getJSON(`/api/runs/${runId}/scores/${metric}`);
-  } catch (_) { /* unscored / unscorable: still show the files below */ }
+  if (metric) {
+    try {
+      rec = await getJSON(`/api/runs/${runId}/scores/${metric}`);
+    } catch (_) { /* unscored / unscorable: still show the files below */ }
+  }
   if (rec) {
     const sample = rec.samples.find((s) => s.id === sampleId);
     if (sample) {

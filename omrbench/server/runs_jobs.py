@@ -84,6 +84,11 @@ def status(run_id: str) -> dict:
             # Exited without a terminal message -> crashed/killed out of band.
             job["status"] = "error"
             job["error"] = job["error"] or "run process exited unexpectedly"
+        if job["status"] == "complete":
+            # Durable on disk now; drop the in-memory record so the registry
+            # doesn't grow. Error entries stay — they carry the failure message
+            # the on-disk status (still "running") doesn't.
+            _jobs.pop(run_id, None)
         return _public(job)
 
 

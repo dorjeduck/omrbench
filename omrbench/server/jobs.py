@@ -84,6 +84,10 @@ def status(run_id: str, metric: str) -> dict:
     _require_known(metric)
     key = (run_id, metric)
     if _is_cached(run_id, metric):
+        # The durable cache file is the record now; drop the in-memory job so
+        # the registry doesn't grow for the life of the server.
+        with _lock:
+            _jobs.pop(key, None)
         return {"status": "done", "done": None, "total": None}
     with _lock:
         job = _jobs.get(key)
