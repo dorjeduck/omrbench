@@ -52,9 +52,10 @@ omrbench augment --corpus DIR --out DIR
                  [--blur R] [--rotate DEG] [--noise N] [--jpeg Q] [--seed S]
 ```
 
-Writes a degraded copy of a corpus (references unchanged). At least one
-degradation is required: `--blur` (gaussian radius), `--rotate` (max degrees ±),
-`--noise` (pixel noise 0–255), `--jpeg` (quality 1–95). `--seed` defaults to 0.
+Writes a degraded copy of a corpus (references unchanged). `--out` must differ
+from `--corpus` (degrading in place is refused). At least one degradation is
+required: `--blur` (gaussian radius), `--rotate` (max degrees ±), `--noise`
+(pixel noise 0–255), `--jpeg` (quality 1–95). `--seed` defaults to 0.
 
 Needs the `augment` extra.
 

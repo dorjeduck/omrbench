@@ -127,8 +127,8 @@ or its own watchdog. They differ in *granularity* because the work differs:
   in-process C call (a music21 parse) can't be interrupted per-sample — the only
   reliable stop is killing the worker process. So scoring runs in a killable
   child (`proc.Job`) with a whole-job cap, applied the **same** way to the server
-  (`omrbench serve`) and the CLI (`omrbench score`) — both go through
-  `proc.run_blocking` / `proc.Job`.
+  (`omrbench serve`) and the CLI (`omrbench score`, and the auto-score after
+  `omrbench run`) — all go through `proc.run_blocking` / `proc.Job`.
 
 ```toml
 [[engines]]
